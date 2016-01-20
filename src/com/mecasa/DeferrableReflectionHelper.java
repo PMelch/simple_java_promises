@@ -9,7 +9,7 @@ import java.lang.reflect.Method;
  * Time: 18:48
  */
 public class DeferrableReflectionHelper {
-    public static void callMethod(Deferrable<?> deferrable, String name, Class<?> returnType, Object[] objects) {
+    public static <T> T callMethod(Object deferrable, String name, Class<?> returnType, Object[] objects) {
         Class<?> cls = deferrable.getClass();
         if (objects == null || objects.length == 0 ) {
             // find method with no parameters
@@ -18,8 +18,7 @@ public class DeferrableReflectionHelper {
                 if (returnType!=null && !method.getReturnType().equals(returnType)) {
                     throw new NoSuchMethodException("method must return a value of "+returnType.getCanonicalName());
                 }
-                method.invoke(deferrable);
-                return;
+                return (T) method.invoke(deferrable);
             } catch (NoSuchMethodException e) {
                 e.printStackTrace();
             } catch (InvocationTargetException e) {
@@ -38,12 +37,14 @@ public class DeferrableReflectionHelper {
             if (returnType!=null && !method.getReturnType().equals(returnType)) {
                 throw new NoSuchMethodException("method must return a value of "+returnType.getCanonicalName());
             }
-            method.invoke(deferrable, objects);
+            return (T) method.invoke(deferrable, objects);
         } catch (NoSuchMethodException e) {
         } catch (InvocationTargetException e) {
             e.printStackTrace();
         } catch (IllegalAccessException e) {
             e.printStackTrace();
         }
+
+        return null;
     }
 }

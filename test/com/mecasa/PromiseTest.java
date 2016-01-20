@@ -132,7 +132,21 @@ public class PromiseTest {
         assertEquals("World", resultDeferrable.params[1]);
     }
 
+    @Test
+    public void testTypesParams() throws Exception {
+        new Deferrable<String>() {
+            @Override
+            String call(Object... params) {
+                return "Hello";
+            }
+        }.getPromise().then(new Deferrable<String>(){
+            String call(String value) {
+                assertEquals("Hello", value);
+                return value;
+            }
+        });
 
+    }
 
     @Test
     public void testPromiseCompletionChain() throws Exception {
