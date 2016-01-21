@@ -5,13 +5,9 @@ package com.mecasa;
  * Date: 17.01.2016
  * Time: 15:28
  */
-public class Deferrable<T> {
+public interface Deferrable<T> {
 
-    Promise getPromise() {
-        return new Promise(this);
-    }
-
-    T call(Object... params) {
+    default T call(Object... params) throws Exception {
         return (T)DeferrableReflectionHelper.callMethod(this, "call", null, params);
     }
 }

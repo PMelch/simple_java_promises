@@ -9,12 +9,12 @@ import java.lang.reflect.Method;
  * Time: 18:48
  */
 public class DeferrableReflectionHelper {
-    public static <T> T callMethod(Object deferrable, String name, Class<?> returnType, Object[] objects) {
+    public static <T> T callMethod(Object deferrable, String name, Class<?> returnType, Object[] objects) throws Exception {
         Class<?> cls = deferrable.getClass();
         if (objects == null || objects.length == 0 ) {
             // find method with no parameters
             try {
-                Method method = cls.getDeclaredMethod(name, null);
+                Method method = cls.getDeclaredMethod(name);
                 if (returnType!=null && !method.getReturnType().equals(returnType)) {
                     throw new NoSuchMethodException("method must return a value of "+returnType.getCanonicalName());
                 }
@@ -22,7 +22,7 @@ public class DeferrableReflectionHelper {
             } catch (NoSuchMethodException e) {
                 e.printStackTrace();
             } catch (InvocationTargetException e) {
-                e.printStackTrace();
+                throw (Exception)e.getCause();
             } catch (IllegalAccessException e) {
                 e.printStackTrace();
             }
@@ -40,7 +40,7 @@ public class DeferrableReflectionHelper {
             return (T) method.invoke(deferrable, objects);
         } catch (NoSuchMethodException e) {
         } catch (InvocationTargetException e) {
-            e.printStackTrace();
+            throw (Exception)e.getCause();
         } catch (IllegalAccessException e) {
             e.printStackTrace();
         }

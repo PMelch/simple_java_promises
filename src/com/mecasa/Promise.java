@@ -3,10 +3,9 @@ package com.mecasa;
 import com.sun.istack.internal.NotNull;
 import com.sun.istack.internal.Nullable;
 
-import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Vector;
 import java.util.concurrent.*;
+import java.util.function.Consumer;
 
 /**
  * User: peter
@@ -15,23 +14,31 @@ import java.util.concurrent.*;
  */
 public class Promise  {
     // default executor
-    private static ExecutorService sExecutor = new ThreadPoolExecutor(1, 10, 100, TimeUnit.SECONDS, new ArrayBlockingQueue<Runnable>(10));
+    private static ExecutorService sExecutor = new ThreadPoolExecutor(1, 10, 100, TimeUnit.SECONDS, new ArrayBlockingQueue<>(10));
     private final Vector<Future<?>> _futures;
-    private Vector _values = new Vector();
+    private final Vector<Object> _values = new Vector<>();
+    private Throwable _rejected;
 
 
     public static void setExecutor(ExecutorService executor) {
         sExecutor = executor;
     }
 
+    public static Promise when(Deferrable<String> deferrable) {
+        return new Promise(deferrable);
+    }
 
-
-    public static Promise all(Deferrable<?>... deferrables) {
-        return new Promise(deferrables, null);
+    public static Promise all(Deferrable<?>... deferrableList) {
+        return new Promise(deferrableList, null);
     }
 
     public Promise() {
-        _futures = new Vector<Future<?>>();
+        _futures = new Vector<>();
+    }
+
+    private Promise(Throwable rejected) {
+        this();
+        _rejected = rejected;
     }
 
     public <T> Promise(final Deferrable<T> deferrable) {
@@ -39,18 +46,18 @@ public class Promise  {
 
         synchronized (sExecutor) {
             synchronized (_futures) {
-                _futures.add(sExecutor.submit(() -> deferrable.call(null)));
+                _futures.add(sExecutor.submit(()->deferrable.call()));
             }
         }
     }
 
-    public Promise(@NotNull Deferrable<?>[] deferrables, @Nullable final Vector _values) {
+    public Promise(@NotNull Deferrable<?>[] deferrableList, @Nullable final Vector _values) {
         this();
 
         Object[] values = _values != null ? _values.toArray(new Object[_values.size()]) : null;
         synchronized (sExecutor) {
             synchronized (_futures) {
-                for (Deferrable<?> deferrable : deferrables) {
+                for (Deferrable<?> deferrable : deferrableList) {
                     _futures.add(sExecutor.submit(() -> deferrable.call(values)));
                 }
             }
@@ -67,20 +74,48 @@ public class Promise  {
                         try {
                             _values.add(future.get());
                         } catch (InterruptedException e) {
+                            _rejected = _rejected == null ? e : _rejected;
                         } catch (ExecutionException e) {
+                            _rejected = _rejected == null ? e.getCause() : _rejected;
                         }
                     }
                 });
+                // remove all pending futures
+                _futures.clear();
             }
         }
     }
 
-    public Promise then(Deferrable<?>... deferrables) {
+    public Promise then(Deferrable<?>... deferrableList) {
         try {
             waitForAll();
-        } catch (InterruptedException e) {
+        } catch (InterruptedException ignored) {
         }
-        return new Promise(deferrables, _values);
+        // forward any rejected error to the next promise
+        if (_rejected != null) {
+            return new Promise(_rejected);
+        }
+        return new Promise(deferrableList, _values);
+    }
+
+
+    public Promise resolve(Consumer<Object[]> result) {
+        try {
+            waitForAll();
+        } catch (InterruptedException ignored) {
+        }
+        result.accept(_values.toArray(new Object[_values.size()]));
+        return this;
+    }
+
+    public void reject(Consumer<Throwable> e) {
+        try {
+            waitForAll();
+        } catch (InterruptedException ignored) {
+        }
+        if (_rejected != null) {
+            e.accept(_rejected);
+        }
     }
 
 }

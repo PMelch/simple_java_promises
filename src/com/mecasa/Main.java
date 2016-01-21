@@ -4,7 +4,11 @@ public class Main {
 
     interface Test {
         default void func(Object... params) {
-            DeferrableReflectionHelper.callMethod(this, "func", null, params);
+            try {
+                DeferrableReflectionHelper.callMethod(this, "func", null, params);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
         }
     }
 
