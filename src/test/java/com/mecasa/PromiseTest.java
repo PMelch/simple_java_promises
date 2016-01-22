@@ -4,6 +4,8 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
+import java.net.URL;
+import java.util.Scanner;
 import java.util.concurrent.Executors;
 
 import static junit.framework.TestCase.assertEquals;
@@ -147,7 +149,24 @@ public class PromiseTest {
     public void testResolve() throws Exception {
         Promise.when(params -> "Hansi")
                 .resolve((params)->{for (Object o : params) System.out.println(o);});
-
     }
 
+    @Test
+    public void testWebAccess() throws Exception {
+        Promise.all(params -> {
+            String out = new Scanner(new URL("http://www.melchart.com").openStream(), "UTF-8").useDelimiter("\\A").next();
+            return out;
+        }, params -> {
+            String out = new Scanner(new URL("http://www.orf.at").openStream(), "UTF-8").useDelimiter("\\A").next();
+            return out;
+        }).resolve(objects -> {
+           for (Object o : objects) {
+               System.out.println(((String)o).length());
+           }
+            System.out.println("done");
+        }).reject(throwable -> {
+            System.out.println("ERROR: "+throwable.getMessage());
+        });
+
+    }
 }
