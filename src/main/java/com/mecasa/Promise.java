@@ -1,7 +1,8 @@
 package com.mecasa;
 
-import com.sun.istack.internal.NotNull;
-import com.sun.istack.internal.Nullable;
+
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.Vector;
 import java.util.concurrent.*;
