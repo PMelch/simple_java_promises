@@ -7,7 +7,5 @@ package com.mecasa;
  */
 public interface Deferrable<T> {
 
-    default T call(Object... params) throws Exception {
-        return (T)DeferrableReflectionHelper.callMethod(this, "call", null, params);
-    }
+    T call(Object... params) throws Exception;
 }
