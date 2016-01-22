@@ -140,7 +140,7 @@ public class PromiseTest {
     public void testError() throws Exception {
         Promise.when(params -> {
             throw new IllegalArgumentException("Error");
-        }).then((Deferrable<String>) params -> "Hansi")
+        }).then((Deferrable<String>) params -> {fail();return null;})
           .resolve(objects -> {fail();})
           .reject(throwable -> System.out.println(throwable));
 
