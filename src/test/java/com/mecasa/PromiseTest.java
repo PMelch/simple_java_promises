@@ -21,7 +21,7 @@ public class PromiseTest {
 
     @Before
     public void setUp() throws Exception {
-        Promise.setExecutor(Executors.newFixedThreadPool(10));
+        Promise.setExecutor(Executors.newFixedThreadPool(4));
     }
 
     @After
@@ -101,6 +101,7 @@ public class PromiseTest {
 
         long ct2 = System.currentTimeMillis();
         long diff = ct2 - ct1;
+        System.out.println("200+100="+diff);
         assertTrue(diff>=200);
         assertTrue(diff<=250);
 
@@ -114,22 +115,13 @@ public class PromiseTest {
     public void testPromiseCompletionChain() throws Exception {
         long ct1 = System.currentTimeMillis();
 
-        Deferrable<String> deferrable = params -> {
-            try {
-                Thread.sleep(100);
-            } catch (InterruptedException e) {
-            }
+        Promise.when(params -> {
+            Thread.sleep(100);
             return "Hello";
-        };
-        Promise.when(deferrable)
-                .then((Deferrable<String>) params -> {
-                    try {
-                        Thread.sleep(100);
-                    } catch (InterruptedException e) {
-                    }
-                    return "World";
-                })
-                .waitForAll();
+        }).then((Deferrable<String>) params -> {
+            Thread.sleep(100);
+            return "World";
+        }).waitForAll();
 
         long ct2 = System.currentTimeMillis();
         assertTrue(ct2>=ct1+200);
@@ -159,7 +151,7 @@ public class PromiseTest {
             String out = new Scanner(new URL("http://www.melchart.com").openStream(), "UTF-8").useDelimiter("\\A").next();
             return out;
         }, params -> {
-            String out = new Scanner(new URL("http://www.orf-.at").openStream(), "UTF-8").useDelimiter("\\A").next();
+            String out = new Scanner(new URL("http://www.orf.at").openStream(), "UTF-8").useDelimiter("\\A").next();
             return out;
         }).resolve(objects -> {
            for (Object o : objects) {
