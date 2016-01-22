@@ -8,6 +8,7 @@ import java.net.URL;
 import java.util.Scanner;
 import java.util.concurrent.Executors;
 
+import static junit.framework.Assert.fail;
 import static junit.framework.TestCase.assertEquals;
 import static org.junit.Assert.assertTrue;
 
@@ -140,6 +141,7 @@ public class PromiseTest {
         Promise.when(params -> {
             throw new IllegalArgumentException("Error");
         }).then((Deferrable<String>) params -> "Hansi")
+          .resolve(objects -> {fail();})
           .reject(throwable -> System.out.println(throwable));
 
     }
@@ -157,7 +159,7 @@ public class PromiseTest {
             String out = new Scanner(new URL("http://www.melchart.com").openStream(), "UTF-8").useDelimiter("\\A").next();
             return out;
         }, params -> {
-            String out = new Scanner(new URL("http://www.orf.at").openStream(), "UTF-8").useDelimiter("\\A").next();
+            String out = new Scanner(new URL("http://www.orf-.at").openStream(), "UTF-8").useDelimiter("\\A").next();
             return out;
         }).resolve(objects -> {
            for (Object o : objects) {
@@ -167,6 +169,5 @@ public class PromiseTest {
         }).reject(throwable -> {
             System.out.println("ERROR: "+throwable.getMessage());
         });
-
     }
 }

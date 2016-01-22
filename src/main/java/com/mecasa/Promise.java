@@ -105,7 +105,9 @@ public class Promise  {
             waitForAll();
         } catch (InterruptedException ignored) {
         }
-        result.accept(_values.toArray(new Object[_values.size()]));
+        if (_rejected == null ) {
+            result.accept(_values.toArray(new Object[_values.size()]));
+        }
         return this;
     }
 
