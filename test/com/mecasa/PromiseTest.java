@@ -138,7 +138,7 @@ public class PromiseTest {
         Promise.when(params -> {
             throw new IllegalArgumentException("Error");
         }).then((Deferrable<String>) params -> "Hansi")
-          .reject(throwable -> System.out.println(throwable.getMessage()));
+          .reject(throwable -> System.out.println(throwable));
 
     }
 
