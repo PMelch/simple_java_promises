@@ -27,7 +27,6 @@ public class PromiseTest {
     @Before
     public void setUp() throws Exception {
         Promise.setExecutorServiceProvider(new Promise.ExecutorServiceProvider() {
-            @Override
             public ExecutorService getExecutorService() {
                 return Executors.newFixedThreadPool(4);
             }
@@ -44,7 +43,6 @@ public class PromiseTest {
 
         public Object[] params;
 
-        @Override
         public String call(Object... params) {
             this.params = params;
             return null;
@@ -190,19 +188,25 @@ public class PromiseTest {
 
     @Test
     public void testWebAccess() throws Exception {
-        Promise.all(params -> {
-            String out = new Scanner(new URL("http://www.melchart.com").openStream(), "UTF-8").useDelimiter("\\A").next();
-            return out;
-        }, params -> {
-            String out = new Scanner(new URL("http://www.orf.at").openStream(), "UTF-8").useDelimiter("\\A").next();
-            return out;
-        }).resolve(objects -> {
-            for (Object o : objects) {
-                System.out.println(((String) o).length());
+        Promise.all(new Deferrable<String>() {
+            public String call(Object... params) throws Exception {
+                return new Scanner(new URL("http://www.melchart.com").openStream(), "UTF-8").useDelimiter("\\A").next();
             }
-            System.out.println("done");
-        }).reject(throwable -> {
-            System.out.println("ERROR: " + throwable.getMessage());
+        }, new Deferrable<String>() {
+            public String call(Object... params) throws Exception {
+                return new Scanner(new URL("http://www.orf.at").openStream(), "UTF-8").useDelimiter("\\A").next();
+            }
+        }).resolve(new Result<Object[]>() {
+            public void accept(Object[] objects) {
+                for (Object o : objects) {
+                    System.out.println(((String) o).length());
+                }
+                System.out.println("done");
+            }
+        }).reject(new Result<Throwable>() {
+            public void accept(Throwable throwable) {
+                System.out.println("ERROR: " + throwable.getMessage());
+            }
         });
     }
 
@@ -212,7 +216,6 @@ public class PromiseTest {
         when(executorService.submit(any(Callable.class))).thenReturn(mock(Future.class));
 
         final Deferrable<String> deferrable = new Deferrable<String>() {
-            @Override
             public String call(Object... params) throws Exception {
                 return "Foo";
             }

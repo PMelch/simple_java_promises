@@ -23,9 +23,8 @@ public class Promise  {
     private Throwable _rejected;
     private ExecutorService _executor;
     private static ExecutorServiceProvider sExecutorServiceProvider = new ExecutorServiceProvider() {
-        @Override
         public ExecutorService getExecutorService() {
-            return new ThreadPoolExecutor(1, 10, 100, TimeUnit.SECONDS, new ArrayBlockingQueue<>(10));
+            return Executors.newFixedThreadPool(2);
         }
     };
 
@@ -64,8 +63,8 @@ public class Promise  {
         if (_executor == null) {
             _executor = sExecutorServiceProvider.getExecutorService();
         }
-        Object[] params = _params;
-        for (Deferrable deferrable : _deferrables) {
+        final Object[] params = _params;
+        for (final Deferrable deferrable : _deferrables) {
             _futures.add(_executor.submit(new Callable<Object>() {
                 public Object call() throws Exception {
                     return deferrable.call(params);
@@ -91,17 +90,15 @@ public class Promise  {
     public void waitForAll() throws InterruptedException {
         submitPendingDeferrables();
 
-        _futures.stream().forEach((future) -> {
-            synchronized (_values) {
-                try {
-                    _values.add(future.get());
-                } catch (InterruptedException e) {
-                    _rejected = _rejected == null ? e : _rejected;
-                } catch (ExecutionException e) {
-                    _rejected = _rejected == null ? e.getCause() : _rejected;
-                }
+        for (Future future : _futures) {
+            try {
+                _values.add(future.get());
+            } catch (InterruptedException e) {
+                _rejected = _rejected == null ? e : _rejected;
+            } catch (ExecutionException e) {
+                _rejected = _rejected == null ? e.getCause() : _rejected;
             }
-        });
+        }
 
         // remove all pending futures
         _futures.clear();
