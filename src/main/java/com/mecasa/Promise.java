@@ -15,14 +15,26 @@ import java.util.function.Consumer;
  */
 public class Promise  {
     // default executor
-    private static ExecutorService sExecutor = new ThreadPoolExecutor(1, 10, 100, TimeUnit.SECONDS, new ArrayBlockingQueue<>(10));
-    private final Vector<Future<?>> _futures;
+//    private static ExecutorService sExecutor = new ThreadPoolExecutor(1, 10, 100, TimeUnit.SECONDS, new ArrayBlockingQueue<>(10));
+    private final Vector<Future<?>> _futures = new Vector<>();
     private final Vector<Object> _values = new Vector<>();
+    private final Vector<Deferrable<?>> _deferrables = new Vector<>();
+    private Object[] _params = null;
     private Throwable _rejected;
+    private ExecutorService _executor;
+    private static ExecutorServiceProvider sExecutorServiceProvider = new ExecutorServiceProvider() {
+        @Override
+        public ExecutorService getExecutorService() {
+            return new ThreadPoolExecutor(1, 10, 100, TimeUnit.SECONDS, new ArrayBlockingQueue<>(10));
+        }
+    };
 
+    public interface ExecutorServiceProvider {
+        ExecutorService getExecutorService();
+    }
 
-    public static void setExecutor(ExecutorService executor) {
-        sExecutor = executor;
+    public static void setExecutorServiceProvider(@NotNull ExecutorServiceProvider provider) {
+        sExecutorServiceProvider = provider;
     }
 
     public static Promise when(Deferrable<String> deferrable) {
@@ -34,7 +46,6 @@ public class Promise  {
     }
 
     public Promise() {
-        _futures = new Vector<>();
     }
 
     private Promise(Throwable rejected) {
@@ -45,62 +56,67 @@ public class Promise  {
     public <T> Promise(final Deferrable<T> deferrable) {
         this();
 
-        synchronized (sExecutor) {
-            synchronized (_futures) {
-                _futures.add(sExecutor.submit(()->deferrable.call()));
-            }
+        _params = null;
+        _deferrables.add(deferrable);
+    }
+
+    private void submitPendingDeferrables() {
+        if (_executor == null) {
+            _executor = sExecutorServiceProvider.getExecutorService();
+        }
+        for (Deferrable deferrable : _deferrables) {
+            _futures.add(_executor.submit(() -> deferrable.call(_params)));
         }
     }
+
 
     public Promise(@NotNull Deferrable<?>[] deferrableList, @Nullable final Vector _values) {
         this();
 
-        Object[] values = _values != null ? _values.toArray(new Object[_values.size()]) : null;
-        synchronized (sExecutor) {
-            synchronized (_futures) {
-                for (Deferrable<?> deferrable : deferrableList) {
-                    _futures.add(sExecutor.submit(() -> deferrable.call(values)));
-                }
-            }
+        _params = _values != null ? _values.toArray(new Object[_values.size()]) : null;
+        for (Deferrable<?> deferrable : deferrableList) {
+            _deferrables.add(deferrable);
         }
     }
 
 
 
     public void waitForAll() throws InterruptedException {
-        synchronized (sExecutor) {
-            synchronized (_futures) {
-                _futures.stream().forEach((future) -> {
-                    synchronized (_values) {
-                        try {
-                            _values.add(future.get());
-                        } catch (InterruptedException e) {
-                            _rejected = _rejected == null ? e : _rejected;
-                        } catch (ExecutionException e) {
-                            _rejected = _rejected == null ? e.getCause() : _rejected;
-                        }
-                    }
-                });
-                // remove all pending futures
-                _futures.clear();
+        submitPendingDeferrables();
+
+        _futures.stream().forEach((future) -> {
+            synchronized (_values) {
+                try {
+                    _values.add(future.get());
+                } catch (InterruptedException e) {
+                    _rejected = _rejected == null ? e : _rejected;
+                } catch (ExecutionException e) {
+                    _rejected = _rejected == null ? e.getCause() : _rejected;
+                }
             }
-        }
+        });
+
+        // remove all pending futures
+        _futures.clear();
     }
 
+
     public Promise then(Deferrable<?>... deferrableList) {
+        submitPendingDeferrables();
         try {
             waitForAll();
         } catch (InterruptedException ignored) {
         }
         // forward any rejected error to the next promise
         if (_rejected != null) {
-            return new Promise(_rejected);
+            return new Promise(_rejected).setExecutor(_executor);
         }
-        return new Promise(deferrableList, _values);
+        return new Promise(deferrableList, _values).setExecutor(_executor);
     }
 
 
     public Promise resolve(Consumer<Object[]> result) {
+        submitPendingDeferrables();
         try {
             waitForAll();
         } catch (InterruptedException ignored) {
@@ -111,7 +127,8 @@ public class Promise  {
         return this;
     }
 
-    public void reject(Consumer<Throwable> e) {
+    public Promise reject(Consumer<Throwable> e) {
+        submitPendingDeferrables();
         try {
             waitForAll();
         } catch (InterruptedException ignored) {
@@ -119,6 +136,12 @@ public class Promise  {
         if (_rejected != null) {
             e.accept(_rejected);
         }
+
+        return this;
     }
 
+    public Promise setExecutor(ExecutorService executorService) {
+        _executor = executorService;
+        return this;
+    }
 }

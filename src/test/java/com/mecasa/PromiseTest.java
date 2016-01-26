@@ -6,11 +6,17 @@ import org.junit.Test;
 
 import java.net.URL;
 import java.util.Scanner;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 import static junit.framework.Assert.fail;
 import static junit.framework.TestCase.assertEquals;
 import static org.junit.Assert.assertTrue;
+import static org.mockito.Matchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 
 /**
  * User: peter
@@ -21,15 +27,13 @@ public class PromiseTest {
 
     @Before
     public void setUp() throws Exception {
-        Promise.setExecutor(Executors.newFixedThreadPool(4));
+        //Promise.setExecutor(Executors.newFixedThreadPool(4));
     }
 
     @After
     public void tearDown() throws Exception {
 
     }
-
-
 
 
     public static class TestDefererrable implements Deferrable<String> {
@@ -75,7 +79,7 @@ public class PromiseTest {
         long ct1 = System.currentTimeMillis();
         Promise.when(deferrable).waitForAll();
         long ct2 = System.currentTimeMillis();
-        assertTrue(ct2>=ct1+100);
+        assertTrue(ct2 >= ct1 + 100);
     }
 
 
@@ -97,13 +101,13 @@ public class PromiseTest {
             Thread.sleep(200);
             return "World";
         }).then(resultDeferrable)
-          .waitForAll();
+                .waitForAll();
 
         long ct2 = System.currentTimeMillis();
         long diff = ct2 - ct1;
-        System.out.println("200+100="+diff);
-        assertTrue(diff>=200);
-        assertTrue(diff<=250);
+        System.out.println("200+100=" + diff);
+        assertTrue(diff >= 200);
+        assertTrue(diff <= 250);
 
         assertEquals(2, resultDeferrable.params.length);
         assertEquals("Hello", resultDeferrable.params[0]);
@@ -124,7 +128,7 @@ public class PromiseTest {
         }).waitForAll();
 
         long ct2 = System.currentTimeMillis();
-        assertTrue(ct2>=ct1+200);
+        assertTrue(ct2 >= ct1 + 200);
     }
 
 
@@ -132,9 +136,14 @@ public class PromiseTest {
     public void testError() throws Exception {
         Promise.when(params -> {
             throw new IllegalArgumentException("Error");
-        }).then((Deferrable<String>) params -> {fail();return null;})
-          .resolve(objects -> {fail();})
-          .reject(throwable -> System.out.println(throwable));
+        }).then((Deferrable<String>) params -> {
+            fail();
+            return null;
+        })
+                .resolve(objects -> {
+                    fail();
+                })
+                .reject(throwable -> System.out.println(throwable));
 
     }
 
@@ -142,7 +151,9 @@ public class PromiseTest {
     @Test
     public void testResolve() throws Exception {
         Promise.when(params -> "Hansi")
-                .resolve((params)->{for (Object o : params) System.out.println(o);});
+                .resolve((params) -> {
+                    for (Object o : params) System.out.println(o);
+                });
     }
 
     @Test
@@ -154,12 +165,32 @@ public class PromiseTest {
             String out = new Scanner(new URL("http://www.orf.at").openStream(), "UTF-8").useDelimiter("\\A").next();
             return out;
         }).resolve(objects -> {
-           for (Object o : objects) {
-               System.out.println(((String)o).length());
-           }
+            for (Object o : objects) {
+                System.out.println(((String) o).length());
+            }
             System.out.println("done");
         }).reject(throwable -> {
-            System.out.println("ERROR: "+throwable.getMessage());
+            System.out.println("ERROR: " + throwable.getMessage());
         });
+    }
+
+    @Test
+    public void testSettingExecutor() throws Exception {
+        ExecutorService executorService = mock(ExecutorService.class);
+        new Promise().setExecutor(executorService)
+                .when(new Deferrable<String>() {
+                    @Override
+                    public String call(Object... params) throws Exception {
+                        return "Foo";
+                    }
+                }).then(new Deferrable<String>() {
+            @Override
+            public String call(Object... params) throws Exception {
+                return "Bar";
+            }
+        }).waitForAll();
+
+        verify(executorService, times(2)).submit(any(Callable.class));
+
     }
 }
