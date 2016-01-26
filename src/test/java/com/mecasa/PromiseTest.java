@@ -9,14 +9,13 @@ import java.util.Scanner;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 import static junit.framework.Assert.fail;
 import static junit.framework.TestCase.assertEquals;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.Matchers.any;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.*;
 
 /**
  * User: peter
@@ -27,7 +26,12 @@ public class PromiseTest {
 
     @Before
     public void setUp() throws Exception {
-        //Promise.setExecutor(Executors.newFixedThreadPool(4));
+        Promise.setExecutorServiceProvider(new Promise.ExecutorServiceProvider() {
+            @Override
+            public ExecutorService getExecutorService() {
+                return Executors.newFixedThreadPool(4);
+            }
+        });
     }
 
     @After
@@ -197,19 +201,19 @@ public class PromiseTest {
     @Test
     public void testSettingExecutor() throws Exception {
         ExecutorService executorService = mock(ExecutorService.class);
-        new Promise().setExecutor(executorService)
-                .when(new Deferrable<String>() {
-                    @Override
-                    public String call(Object... params) throws Exception {
-                        return "Foo";
-                    }
-                }).then(new Deferrable<String>() {
+        when(executorService.submit(any(Callable.class))).thenReturn(mock(Future.class));
+
+        final Deferrable<String> deferrable = new Deferrable<String>() {
             @Override
             public String call(Object... params) throws Exception {
-                return "Bar";
+                return "Foo";
             }
-        }).waitForAll();
+        };
+        Promise.when(deferrable).setExecutor(executorService)
+                .then(deferrable)
+                .waitForAll();
 
+        // make sure the executor has been passed through all promises
         verify(executorService, times(2)).submit(any(Callable.class));
 
     }
