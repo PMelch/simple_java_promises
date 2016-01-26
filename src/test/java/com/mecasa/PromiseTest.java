@@ -223,6 +223,5 @@ public class PromiseTest {
 
         // make sure the executor has been passed through all promises
         verify(executorService, times(2)).submit(any(Callable.class));
-
     }
 }
