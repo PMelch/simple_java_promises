@@ -137,7 +137,7 @@ public class PromiseTest {
                 Thread.sleep(100);
                 return "Hello";
             }
-        }).then(new Deferrable<String>(){
+        }).then(new Deferrable<String>() {
 
             public String call(Object... params) throws Exception {
                 Thread.sleep(100);
@@ -162,10 +162,10 @@ public class PromiseTest {
                 return null;
             }
         }).resolve(new Result<Object[]>() {
-                    public void accept(Object[] objects) {
-                        fail();
-                    }
-                })
+            public void accept(Object[] objects) {
+                fail();
+            }
+        })
                 .reject(new Result<Throwable>() {
                     public void accept(Throwable throwable) {
                         System.out.println(throwable);
