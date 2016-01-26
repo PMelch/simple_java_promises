@@ -16,9 +16,9 @@ import java.util.function.Consumer;
 public class Promise  {
     // default executor
 //    private static ExecutorService sExecutor = new ThreadPoolExecutor(1, 10, 100, TimeUnit.SECONDS, new ArrayBlockingQueue<>(10));
-    private final Vector<Future<?>> _futures = new Vector<>();
-    private final Vector<Object> _values = new Vector<>();
-    private final Vector<Deferrable<?>> _deferrables = new Vector<>();
+    private final Vector<Future<?>> _futures = new Vector<Future<?>>();
+    private final Vector<Object> _values = new Vector<Object>();
+    private final Vector<Deferrable<?>> _deferrables = new Vector<Deferrable<?>>();
     private Object[] _params = null;
     private Throwable _rejected;
     private ExecutorService _executor;
@@ -64,9 +64,16 @@ public class Promise  {
         if (_executor == null) {
             _executor = sExecutorServiceProvider.getExecutorService();
         }
+        Object[] params = _params;
         for (Deferrable deferrable : _deferrables) {
-            _futures.add(_executor.submit(() -> deferrable.call(_params)));
+            _futures.add(_executor.submit(new Callable<Object>() {
+                public Object call() throws Exception {
+                    return deferrable.call(params);
+                }
+            }));
         }
+        _deferrables.clear();
+        _params = null;
     }
 
 
@@ -115,7 +122,7 @@ public class Promise  {
     }
 
 
-    public Promise resolve(Consumer<Object[]> result) {
+    public Promise resolve(Result<Object[]> result) {
         submitPendingDeferrables();
         try {
             waitForAll();
@@ -127,7 +134,7 @@ public class Promise  {
         return this;
     }
 
-    public Promise reject(Consumer<Throwable> e) {
+    public Promise reject(Result<Throwable> e) {
         submitPendingDeferrables();
         try {
             waitForAll();

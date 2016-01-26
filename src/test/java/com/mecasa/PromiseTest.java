@@ -53,8 +53,11 @@ public class PromiseTest {
 
     @Test
     public void testCallParameters() throws Exception {
-        Deferrable<String> deferrable = params -> "Hello";
-
+        Deferrable<String> deferrable = new Deferrable<String>() {
+            public String call(Object... params) throws Exception {
+                return "Hello";
+            }
+        };
 
         final TestDefererrable deferrable1 = new TestDefererrable() {
             @Override
@@ -76,9 +79,11 @@ public class PromiseTest {
 
     @Test
     public void testPromiseCompletion() throws Exception {
-        Deferrable<String> deferrable = params -> {
-            Thread.sleep(100);
-            return "Hello";
+        Deferrable<String> deferrable = new Deferrable<String>() {
+            public String call(Object... params) throws Exception {
+                Thread.sleep(100);
+                return "Hello";
+            }
         };
         long ct1 = System.currentTimeMillis();
         Promise.when(deferrable).waitForAll();
@@ -98,12 +103,16 @@ public class PromiseTest {
                 return "World";
             }
         };
-        Promise.all(params -> {
-            Thread.sleep(100);
-            return "Hello";
-        }, params -> {
-            Thread.sleep(200);
-            return "World";
+        Promise.all(new Deferrable<String>() {
+            public String call(Object... params) throws Exception {
+                Thread.sleep(100);
+                return "Hello";
+            }
+        }, new Deferrable<String>() {
+            public String call(Object... params) throws Exception {
+                Thread.sleep(200);
+                return "World";
+            }
         }).then(resultDeferrable)
                 .waitForAll();
 
@@ -123,12 +132,17 @@ public class PromiseTest {
     public void testPromiseCompletionChain() throws Exception {
         long ct1 = System.currentTimeMillis();
 
-        Promise.when(params -> {
-            Thread.sleep(100);
-            return "Hello";
-        }).then((Deferrable<String>) params -> {
-            Thread.sleep(100);
-            return "World";
+        Promise.when(new Deferrable<String>() {
+            public String call(Object... params) throws Exception {
+                Thread.sleep(100);
+                return "Hello";
+            }
+        }).then(new Deferrable<String>(){
+
+            public String call(Object... params) throws Exception {
+                Thread.sleep(100);
+                return "World";
+            }
         }).waitForAll();
 
         long ct2 = System.currentTimeMillis();
@@ -138,26 +152,40 @@ public class PromiseTest {
 
     @Test
     public void testError() throws Exception {
-        Promise.when(params -> {
-            throw new IllegalArgumentException("Error");
-        }).then((Deferrable<String>) params -> {
-            fail();
-            return null;
-        })
-                .resolve(objects -> {
-                    fail();
+        Promise.when(new Deferrable<String>() {
+            public String call(Object... params) throws Exception {
+                throw new IllegalArgumentException("Error");
+            }
+        }).then(new Deferrable<String>() {
+            public String call(Object... params) throws Exception {
+                fail();
+                return null;
+            }
+        }).resolve(new Result<Object[]>() {
+                    public void accept(Object[] objects) {
+                        fail();
+                    }
                 })
-                .reject(throwable -> System.out.println(throwable));
-
+                .reject(new Result<Throwable>() {
+                    public void accept(Throwable throwable) {
+                        System.out.println(throwable);
+                    }
+                });
     }
 
 
     @Test
     public void testResolve() throws Exception {
-        Promise.when(params -> "Hansi")
-                .resolve((params) -> {
-                    for (Object o : params) System.out.println(o);
-                });
+        Promise.when(new Deferrable<String>() {
+            public String call(Object... params) throws Exception {
+                return "Foo";
+            }
+        }).resolve(new Result<Object[]>() {
+            public void accept(Object[] objects) {
+                assertEquals(1, objects.length);
+                assertEquals("Foo", objects[0]);
+            }
+        });
     }
 
     @Test
@@ -176,26 +204,6 @@ public class PromiseTest {
         }).reject(throwable -> {
             System.out.println("ERROR: " + throwable.getMessage());
         });
-    }
-
-    @Test
-    public void testSettingExecutor() throws Exception {
-        ExecutorService executorService = mock(ExecutorService.class);
-        new Promise().setExecutor(executorService)
-                .when(new Deferrable<String>() {
-                    @Override
-                    public String call(Object... params) throws Exception {
-                        return "Foo";
-                    }
-                }).then(new Deferrable<String>() {
-            @Override
-            public String call(Object... params) throws Exception {
-                return "Bar";
-            }
-        }).waitForAll();
-
-        verify(executorService, times(2)).submit(any(Callable.class));
-
     }
 
     @Test
