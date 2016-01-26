@@ -239,7 +239,7 @@ public class PromiseTest {
                 return "Foo";
             }
         })
-        .retriesWithDelay(3, 1000)
+        .retriesWithDelay(3, 100)
         .reject(new Result<Throwable>() {
             public void accept(Throwable throwable) {
                 fail();
