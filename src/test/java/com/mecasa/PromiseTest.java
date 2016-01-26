@@ -193,4 +193,24 @@ public class PromiseTest {
         verify(executorService, times(2)).submit(any(Callable.class));
 
     }
+
+    @Test
+    public void testSettingExecutor() throws Exception {
+        ExecutorService executorService = mock(ExecutorService.class);
+        new Promise().setExecutor(executorService)
+                .when(new Deferrable<String>() {
+                    @Override
+                    public String call(Object... params) throws Exception {
+                        return "Foo";
+                    }
+                }).then(new Deferrable<String>() {
+            @Override
+            public String call(Object... params) throws Exception {
+                return "Bar";
+            }
+        }).waitForAll();
+
+        verify(executorService, times(2)).submit(any(Callable.class));
+
+    }
 }
