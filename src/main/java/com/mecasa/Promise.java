@@ -6,7 +6,6 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.Vector;
 import java.util.concurrent.*;
-import java.util.function.Consumer;
 
 /**
  * User: peter
@@ -27,6 +26,19 @@ public class Promise  {
             return Executors.newFixedThreadPool(2);
         }
     };
+    private int _numRetries;
+    private int _retryDelay;
+
+    public Promise retries(int numRetries) {
+        _numRetries = numRetries;
+        return this;
+    }
+
+    public Promise retriesWithDelay(int numRetries, int millisecs) {
+        _numRetries = numRetries;
+        _retryDelay = millisecs;
+        return this;
+    }
 
     public interface ExecutorServiceProvider {
         ExecutorService getExecutorService();
@@ -59,22 +71,6 @@ public class Promise  {
         _deferrables.add(deferrable);
     }
 
-    private void submitPendingDeferrables() {
-        if (_executor == null) {
-            _executor = sExecutorServiceProvider.getExecutorService();
-        }
-        final Object[] params = _params;
-        for (final Deferrable deferrable : _deferrables) {
-            _futures.add(_executor.submit(new Callable<Object>() {
-                public Object call() throws Exception {
-                    return deferrable.call(params);
-                }
-            }));
-        }
-        _deferrables.clear();
-        _params = null;
-    }
-
 
     public Promise(@NotNull Deferrable<?>[] deferrableList, @Nullable final Vector _values) {
         this();
@@ -87,30 +83,60 @@ public class Promise  {
 
 
 
-    public void waitForAll() throws InterruptedException {
-        submitPendingDeferrables();
+    public void submitAndWaitForResults()  {
+        if (_executor == null) {
+            _executor = sExecutorServiceProvider.getExecutorService();
+        }
+        final Object[] params = _params;
 
-        for (Future future : _futures) {
-            try {
-                _values.add(future.get());
-            } catch (InterruptedException e) {
-                _rejected = _rejected == null ? e : _rejected;
-            } catch (ExecutionException e) {
-                _rejected = _rejected == null ? e.getCause() : _rejected;
+        for(;;) {
+            for (final Deferrable deferrable : _deferrables) {
+                _futures.add(_executor.submit(new Callable<Object>() {
+                    public Object call() throws Exception {
+                        return deferrable.call(params);
+                    }
+                }));
             }
+
+            for (Future future : _futures) {
+                try {
+                    _values.add(future.get());
+                } catch (InterruptedException e) {
+                    _rejected = _rejected == null ? e : _rejected;
+                    break;
+                } catch (ExecutionException e) {
+                    _rejected = _rejected == null ? e.getCause() : _rejected;
+                    break;
+                }
+            }
+
+            if (_numRetries == 0) {
+                break;
+            }
+
+            if (_retryDelay > 0) {
+                try {
+                    Thread.sleep(_retryDelay);
+                } catch (InterruptedException e) {
+                }
+            }
+
+            // retry everything.
+            _rejected = null;
+            --_numRetries;
+            _values.clear();
+            _futures.clear();
         }
 
-        // remove all pending futures
+        // remove all pending futures and deferrables
+        _deferrables.clear();
+        _params = null;
         _futures.clear();
     }
 
 
     public Promise then(Deferrable<?>... deferrableList) {
-        submitPendingDeferrables();
-        try {
-            waitForAll();
-        } catch (InterruptedException ignored) {
-        }
+        submitAndWaitForResults();
         // forward any rejected error to the next promise
         if (_rejected != null) {
             return new Promise(_rejected).setExecutor(_executor);
@@ -120,11 +146,7 @@ public class Promise  {
 
 
     public Promise resolve(Result<Object[]> result) {
-        submitPendingDeferrables();
-        try {
-            waitForAll();
-        } catch (InterruptedException ignored) {
-        }
+        submitAndWaitForResults();
         if (_rejected == null ) {
             result.accept(_values.toArray(new Object[_values.size()]));
         }
@@ -132,11 +154,7 @@ public class Promise  {
     }
 
     public Promise reject(Result<Throwable> e) {
-        submitPendingDeferrables();
-        try {
-            waitForAll();
-        } catch (InterruptedException ignored) {
-        }
+        submitAndWaitForResults();
         if (_rejected != null) {
             e.accept(_rejected);
         }

@@ -67,7 +67,7 @@ public class PromiseTest {
 
         Promise.when(deferrable)
                 .then(deferrable1)
-                .waitForAll();
+                .submitAndWaitForResults();
 
         assertEquals(1, deferrable1.params.length);
         assertEquals("Hello", deferrable1.params[0]);
@@ -84,7 +84,7 @@ public class PromiseTest {
             }
         };
         long ct1 = System.currentTimeMillis();
-        Promise.when(deferrable).waitForAll();
+        Promise.when(deferrable).submitAndWaitForResults();
         long ct2 = System.currentTimeMillis();
         assertTrue(ct2 >= ct1 + 100);
     }
@@ -112,7 +112,7 @@ public class PromiseTest {
                 return "World";
             }
         }).then(resultDeferrable)
-                .waitForAll();
+                .submitAndWaitForResults();
 
         long ct2 = System.currentTimeMillis();
         long diff = ct2 - ct1;
@@ -141,7 +141,7 @@ public class PromiseTest {
                 Thread.sleep(100);
                 return "World";
             }
-        }).waitForAll();
+        }).submitAndWaitForResults();
 
         long ct2 = System.currentTimeMillis();
         assertTrue(ct2 >= ct1 + 200);
@@ -222,9 +222,35 @@ public class PromiseTest {
         };
         Promise.when(deferrable).setExecutor(executorService)
                 .then(deferrable)
-                .waitForAll();
+                .submitAndWaitForResults();
 
         // make sure the executor has been passed through all promises
         verify(executorService, times(2)).submit(any(Callable.class));
+    }
+
+    @Test
+    public void testRetry() throws Exception {
+        Promise.when(new Deferrable<String>() {
+            private int tryNum = 0;
+            public String call(Object... params) throws Exception {
+                if (tryNum++<3) {
+                    throw new IllegalAccessError();
+                }
+                return "Foo";
+            }
+        })
+        .retriesWithDelay(3, 1000)
+        .reject(new Result<Throwable>() {
+            public void accept(Throwable throwable) {
+                fail();
+            }
+        })
+        .resolve(new Result<Object[]>() {
+            public void accept(Object[] objects) {
+                assertEquals(1, objects.length);
+                assertEquals("Foo", objects[0]);
+            }
+        });
+
     }
 }
