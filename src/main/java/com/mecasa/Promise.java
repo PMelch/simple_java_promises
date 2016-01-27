@@ -13,8 +13,6 @@ import java.util.concurrent.*;
  * Time: 15:39
  */
 public class Promise  {
-    // default executor
-//    private static ExecutorService sExecutor = new ThreadPoolExecutor(1, 10, 100, TimeUnit.SECONDS, new ArrayBlockingQueue<>(10));
     private final Vector<Future<?>> _futures = new Vector<Future<?>>();
     private final Vector<Object> _values = new Vector<Object>();
     private final Vector<Deferrable<?>> _deferrables = new Vector<Deferrable<?>>();
@@ -29,50 +27,50 @@ public class Promise  {
     private int _numRetries;
     private int _retryDelay;
 
-    public Promise retries(int numRetries) {
-        _numRetries = numRetries;
-        return this;
-    }
-
-    public Promise retriesWithDelay(int numRetries, int millisecs) {
-        _numRetries = numRetries;
-        _retryDelay = millisecs;
-        return this;
-    }
-
     public interface ExecutorServiceProvider {
         ExecutorService getExecutorService();
     }
 
+    /**
+     * Set the {@link ExecutorServiceProvider} used to retrieve the {@link ExecutorService} to use in case
+     * no specific ExecutorService is set with {@link #setExecutor(ExecutorService)}.
+     * @param provider
+     */
     public static void setExecutorServiceProvider(@NotNull ExecutorServiceProvider provider) {
         sExecutorServiceProvider = provider;
     }
 
-    public static Promise when(Deferrable<String> deferrable) {
-        return new Promise(deferrable);
-    }
 
-    public static Promise all(Deferrable<?>... deferrableList) {
+    /**
+     * Create a Promise object wich executes the passed list of {@link Deferrable}. Each call to {@link Deferrable#call(Object...)} will receive
+     * no parameters.
+     * @param deferrableList the list of Deferrables.
+     * @return
+     */
+    public static Promise when(@NotNull Deferrable<?>... deferrableList) {
+        if (deferrableList.length == 0) {
+            throw new IllegalArgumentException("deferrableList must not be of zero length");
+        }
         return new Promise(deferrableList, null);
     }
 
-    public Promise() {
+    private Promise() {
     }
 
+    /**
+     * Constructor used to pass on errors.
+     * @param rejected
+     */
     private Promise(Throwable rejected) {
         this();
         _rejected = rejected;
     }
 
-    public <T> Promise(final Deferrable<T> deferrable) {
-        this();
-
-        _params = null;
-        _deferrables.add(deferrable);
-    }
-
-
-    public Promise(@NotNull Deferrable<?>[] deferrableList, @Nullable final Vector _values) {
+    /**
+     * @param deferrableList
+     * @param _values
+     */
+    protected Promise(@NotNull Deferrable<?>[] deferrableList, @Nullable final Vector _values) {
         this();
 
         _params = _values != null ? _values.toArray(new Object[_values.size()]) : null;
@@ -81,9 +79,15 @@ public class Promise  {
         }
     }
 
+    /**
+     * Triggers any remaining tasks and wait for their compleation.
+     * This terminates the Promise chain.
+     */
+    public void waitForCompletion() {
+        submitAndWaitForResults();
+    }
 
-
-    public void submitAndWaitForResults()  {
+    private void submitAndWaitForResults()  {
         if (_executor == null) {
             _executor = sExecutorServiceProvider.getExecutorService();
         }
@@ -135,6 +139,14 @@ public class Promise  {
     }
 
 
+    /**
+     * Schedules a new set of {@link Deferrable}s after the current set have completed their tasks.
+     * Each {@link Deferrable#call(Object...)} will get the results of the previous task as parameters.
+     * The order of the parameters correlates with the order of the Deferrables when being passed
+     * to {@link Promise#when(Deferrable[])} or preceding calls to {@link Promise#then(Deferrable[])}.
+     * @param deferrableList
+     * @return the chained Promise
+     */
     public Promise then(Deferrable<?>... deferrableList) {
         submitAndWaitForResults();
         // forward any rejected error to the next promise
@@ -145,6 +157,13 @@ public class Promise  {
     }
 
 
+    /**
+     * A call to resolve will trigger a call to the passed {@link Result#accept(Object)} with the list of results ( from the
+     * completed Deferrables) as parameter once the deferred tasks are complete. This happens only if no uncaught Exception
+     * has occurred. Otherwise the error callback passed to {@link #reject(Result)} will be triggered.
+     * @param result
+     * @return the chained Promise
+     */
     public Promise resolve(Result<Object[]> result) {
         submitAndWaitForResults();
         if (_rejected == null ) {
@@ -153,6 +172,14 @@ public class Promise  {
         return this;
     }
 
+
+    /**
+     * A call to reject will trigger a call to the passed {@link Result#accept(Object)} with the first error that
+     * has occured in the processed list of deferrables. If an error has occured the result callback passed with {@link #resolve(Result)} will
+     * not be triggered.
+     * @param e
+     * @return the chained Promise
+     */
     public Promise reject(Result<Throwable> e) {
         submitAndWaitForResults();
         if (_rejected != null) {
@@ -162,6 +189,34 @@ public class Promise  {
         return this;
     }
 
+    /**
+     * Specifies that in case one of the passed tasks of the current Promise fails, all Tasks will be retries for the given amount of times.
+     * @param numRetries
+     * @return the chained Promise
+     */
+    public Promise retries(int numRetries) {
+        _numRetries = numRetries;
+        return this;
+    }
+
+    /**
+     * Specifies that in case one of the passed tasks of the current Promise fails, all Tasks will be retries for the given amount of times.
+     * Each retry is delayed for the given amount of millisecs.
+     * @param numRetries
+     * @param millisecs
+     * @return the chained Promise
+     */
+    public Promise retriesWithDelay(int numRetries, int millisecs) {
+        _numRetries = numRetries;
+        _retryDelay = millisecs;
+        return this;
+    }
+
+    /**
+     * Specifies the {@link ExecutorService} for this and all chained Promise.
+     * @param executorService
+     * @return the chained Promise
+     */
     public Promise setExecutor(ExecutorService executorService) {
         _executor = executorService;
         return this;

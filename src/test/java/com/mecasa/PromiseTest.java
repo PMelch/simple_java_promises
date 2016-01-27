@@ -67,7 +67,7 @@ public class PromiseTest {
 
         Promise.when(deferrable)
                 .then(deferrable1)
-                .submitAndWaitForResults();
+                .waitForCompletion();
 
         assertEquals(1, deferrable1.params.length);
         assertEquals("Hello", deferrable1.params[0]);
@@ -84,7 +84,7 @@ public class PromiseTest {
             }
         };
         long ct1 = System.currentTimeMillis();
-        Promise.when(deferrable).submitAndWaitForResults();
+        Promise.when(deferrable).waitForCompletion();
         long ct2 = System.currentTimeMillis();
         assertTrue(ct2 >= ct1 + 100);
     }
@@ -101,7 +101,7 @@ public class PromiseTest {
                 return "World";
             }
         };
-        Promise.all(new Deferrable<String>() {
+        Promise.when(new Deferrable<String>() {
             public String call(Object... params) throws Exception {
                 Thread.sleep(100);
                 return "Hello";
@@ -112,7 +112,7 @@ public class PromiseTest {
                 return "World";
             }
         }).then(resultDeferrable)
-                .submitAndWaitForResults();
+                .waitForCompletion();
 
         long ct2 = System.currentTimeMillis();
         long diff = ct2 - ct1;
@@ -141,7 +141,7 @@ public class PromiseTest {
                 Thread.sleep(100);
                 return "World";
             }
-        }).submitAndWaitForResults();
+        }).waitForCompletion();
 
         long ct2 = System.currentTimeMillis();
         assertTrue(ct2 >= ct1 + 200);
@@ -188,7 +188,7 @@ public class PromiseTest {
 
     @Test
     public void testWebAccess() throws Exception {
-        Promise.all(new Deferrable<String>() {
+        Promise.when(new Deferrable<String>() {
             public String call(Object... params) throws Exception {
                 return new Scanner(new URL("http://www.melchart.com").openStream(), "UTF-8").useDelimiter("\\A").next();
             }
@@ -222,7 +222,7 @@ public class PromiseTest {
         };
         Promise.when(deferrable).setExecutor(executorService)
                 .then(deferrable)
-                .submitAndWaitForResults();
+                .waitForCompletion();
 
         // make sure the executor has been passed through all promises
         verify(executorService, times(2)).submit(any(Callable.class));
@@ -251,6 +251,21 @@ public class PromiseTest {
                 assertEquals("Foo", objects[0]);
             }
         });
+    }
+
+    @Test
+    public void testParameters() throws Exception {
+        try {
+            Promise.when().waitForCompletion();
+            fail();
+        } catch (IllegalArgumentException e) {
+        }
+
+        try {
+            Promise.when(null).waitForCompletion();
+            fail();
+        } catch (IllegalArgumentException e) {
+        }
 
     }
 }
