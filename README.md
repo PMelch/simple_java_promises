@@ -21,3 +21,13 @@ Lets you do things like
         
 
 ```
+
+Each Deferrable can resolve its status by returning a value or reject it by throwing an exception. Values get passed to any chained promises as parameters.
+
+What SJPromise is:
+* a simple way to use Javascript Promise-like syntax to chain async tasks
+* working with Java 1.5 and above
+
+What SJPromise is NOT:
+* A full blown replacement for the CompletableFuture from Java 8 or the [JDeferred Lib](http://jdeferred.org/)
+* complying to the [Promises/A+ standard](https://promisesaplus.com/) 
