@@ -39,7 +39,7 @@ public class PromiseTest {
     }
 
 
-    public static class TestDefererrable implements Deferrable<String> {
+    public static class TestDeferrable implements Deferrable<String> {
 
         public Object[] params;
 
@@ -57,7 +57,7 @@ public class PromiseTest {
             }
         };
 
-        final TestDefererrable deferrable1 = new TestDefererrable() {
+        final TestDeferrable deferrable1 = new TestDeferrable() {
             @Override
             public String call(Object... params) {
                 super.call(params);
@@ -94,7 +94,7 @@ public class PromiseTest {
     public void testPromiseMultiCompletion() throws Exception {
         long ct1 = System.currentTimeMillis();
 
-        final TestDefererrable resultDeferrable = new TestDefererrable() {
+        final TestDeferrable resultDeferrable = new TestDeferrable() {
             @Override
             public String call(Object... params) {
                 super.call(params);
@@ -116,7 +116,7 @@ public class PromiseTest {
 
         long ct2 = System.currentTimeMillis();
         long diff = ct2 - ct1;
-        System.out.println("200+100=" + diff);
+        System.out.println("200+100 => " + diff);
         assertTrue(diff >= 200);
         assertTrue(diff <= 250);
 
@@ -166,7 +166,7 @@ public class PromiseTest {
         })
                 .reject(new Result<Throwable>() {
                     public void accept(Throwable throwable) {
-                        System.out.println(throwable);
+                        System.out.println(throwable.getMessage());
                     }
                 });
     }
@@ -259,7 +259,7 @@ public class PromiseTest {
         try {
             Promise.when().waitForCompletion();
             fail();
-        } catch (IllegalArgumentException e) {
+        } catch (IllegalArgumentException ignored) {
         }
 
         try {
@@ -271,20 +271,19 @@ public class PromiseTest {
 
     @Test
     public void testThreadChaining() throws Exception {
-        Deferrable<String> deferrable = new ThreadDeferrable<String>() {
+        Deferrable<String> deferrable = new AsyncDeferrable<String>() {
             public String call(Object... params) throws Exception {
-                final Thread deferrable = new Thread(new Runnable() {
+                final Thread deferrable = createThread(new Runnable() {
                     public void run() {
                         try {
-                            Thread.sleep(1000);
-                        } catch (InterruptedException e) {
+                            Thread.sleep(100);
+                        } catch (InterruptedException ignored) {
                         }
                         synchronized (getSyncObject()) {
                             getSyncObject().notify();
                         }
                     }
                 });
-                deferrable.setUncaughtExceptionHandler(this);
                 deferrable.start();
 
                 System.out.println("waiting for thread to finish");
@@ -293,6 +292,7 @@ public class PromiseTest {
                 }
                 System.out.println("done");
 
+                rejectIfError();
                 return "Foo";
             }
         };
@@ -308,19 +308,18 @@ public class PromiseTest {
 
     @Test
     public void testThreadError() throws Exception {
-        Deferrable<String> deferrable = new ThreadDeferrable<String>() {
+        Deferrable<String> deferrable = new AsyncDeferrable<String>() {
             public String call(Object... params) throws Exception {
-                final Thread deferredThread = new Thread(new Runnable() {
+                final Thread deferredThread = createThread(new Runnable() {
                     public void run() {
                         try {
-                            Thread.sleep(1000);
+                            Thread.sleep(100);
                         } catch (InterruptedException e) {
                         }
                         throw new IllegalArgumentException("error");
                     }
                 });
 
-                deferredThread.setUncaughtExceptionHandler(this);
                 deferredThread.start();
 
                 System.out.println("waiting for thread to finish");
@@ -328,9 +327,9 @@ public class PromiseTest {
                     getSyncObject().wait();
                 }
                 // in case there was an error, reject the deferrable
-                rejectIfError();
                 System.out.println("done");
 
+                rejectIfError();
                 return "Foo";
             }
         };

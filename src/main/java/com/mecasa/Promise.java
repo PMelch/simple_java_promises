@@ -121,7 +121,7 @@ public class Promise  {
             if (_retryDelay > 0) {
                 try {
                     Thread.sleep(_retryDelay);
-                } catch (InterruptedException e) {
+                } catch (InterruptedException ignored) {
                 }
             }
 
@@ -143,7 +143,7 @@ public class Promise  {
      * Schedules a new set of {@link Deferrable}s after the current set have completed their tasks.
      * Each {@link Deferrable#call(Object...)} will get the results of the previous task as parameters.
      * The order of the parameters correlates with the order of the Deferrables when being passed
-     * to {@link Promise#when(Deferrable[])} or preceding calls to {@link Promise#then(Deferrable[])}.
+     * to {@link #when(Deferrable[])} or preceding calls to {@link#then(Deferrable[])}.
      * @param deferrableList
      * @return the chained Promise
      */
@@ -175,7 +175,7 @@ public class Promise  {
 
     /**
      * A call to reject will trigger a call to the passed {@link Result#accept(Object)} with the first error that
-     * has occured in the processed list of deferrables. If an error has occured the result callback passed with {@link #resolve(Result)} will
+     * has occurred in the processed list of deferrables. If an error has occured the result callback passed with {@link #resolve(Result)} will
      * not be triggered.
      * @param e
      * @return the chained Promise
