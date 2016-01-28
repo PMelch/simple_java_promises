@@ -232,25 +232,26 @@ public class PromiseTest {
     public void testRetry() throws Exception {
         Promise.when(new Deferrable<String>() {
             private int tryNum = 0;
+
             public String call(Object... params) throws Exception {
-                if (tryNum++<3) {
+                if (tryNum++ < 3) {
                     throw new IllegalAccessError();
                 }
                 return "Foo";
             }
         })
-        .retriesWithDelay(3, 100)
-        .reject(new Result<Throwable>() {
-            public void accept(Throwable throwable) {
-                fail();
-            }
-        })
-        .resolve(new Result<Object[]>() {
-            public void accept(Object[] objects) {
-                assertEquals(1, objects.length);
-                assertEquals("Foo", objects[0]);
-            }
-        });
+                .retriesWithDelay(3, 100)
+                .reject(new Result<Throwable>() {
+                    public void accept(Throwable throwable) {
+                        fail();
+                    }
+                })
+                .resolve(new Result<Object[]>() {
+                    public void accept(Object[] objects) {
+                        assertEquals(1, objects.length);
+                        assertEquals("Foo", objects[0]);
+                    }
+                });
     }
 
     @Test
@@ -270,25 +271,25 @@ public class PromiseTest {
 
     @Test
     public void testThreadChaining() throws Exception {
-        Deferrable<String> deferrable = new Deferrable<String>() {
+        Deferrable<String> deferrable = new ThreadDeferrable<String>() {
             public String call(Object... params) throws Exception {
-                final Object sync = new Object();
-
-                new Thread(new Runnable(){
+                final Thread deferrable = new Thread(new Runnable() {
                     public void run() {
                         try {
                             Thread.sleep(1000);
                         } catch (InterruptedException e) {
                         }
-                        synchronized (sync) {
-                            sync.notify();
+                        synchronized (getSyncObject()) {
+                            getSyncObject().notify();
                         }
                     }
-                }).start();
+                });
+                deferrable.setUncaughtExceptionHandler(this);
+                deferrable.start();
 
                 System.out.println("waiting for thread to finish");
-                synchronized (sync) {
-                    sync.wait();
+                synchronized (getSyncObject()) {
+                    getSyncObject().wait();
                 }
                 System.out.println("done");
 
@@ -303,4 +304,53 @@ public class PromiseTest {
                 .waitForCompletion();
 
     }
+
+
+    @Test
+    public void testThreadError() throws Exception {
+        Deferrable<String> deferrable = new ThreadDeferrable<String>() {
+            public String call(Object... params) throws Exception {
+                final Thread deferredThread = new Thread(new Runnable() {
+                    public void run() {
+                        try {
+                            Thread.sleep(1000);
+                        } catch (InterruptedException e) {
+                        }
+                        throw new IllegalArgumentException("error");
+                    }
+                });
+
+                deferredThread.setUncaughtExceptionHandler(this);
+                deferredThread.start();
+
+                System.out.println("waiting for thread to finish");
+                synchronized (getSyncObject()) {
+                    getSyncObject().wait();
+                }
+                // in case there was an error, reject the deferrable
+                rejectIfError();
+                System.out.println("done");
+
+                return "Foo";
+            }
+        };
+
+
+        Promise
+                .when(deferrable)
+                .reject(new Result<Throwable>() {
+                    @Override
+                    public void accept(Throwable throwable) {
+                        // success
+                        System.out.println("Error: "+throwable.getMessage());
+                    }
+                }).resolve(new Result<Object[]>() {
+                    @Override
+                    public void accept(Object[] objects) {
+                        fail();
+                    }
+                });
+
+    }
+
 }
