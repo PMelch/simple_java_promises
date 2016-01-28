@@ -266,6 +266,41 @@ public class PromiseTest {
             fail();
         } catch (IllegalArgumentException e) {
         }
+    }
+
+    @Test
+    public void testThreadChaining() throws Exception {
+        Deferrable<String> deferrable = new Deferrable<String>() {
+            public String call(Object... params) throws Exception {
+                final Object sync = new Object();
+
+                new Thread(new Runnable(){
+                    public void run() {
+                        try {
+                            Thread.sleep(1000);
+                        } catch (InterruptedException e) {
+                        }
+                        synchronized (sync) {
+                            sync.notify();
+                        }
+                    }
+                }).start();
+
+                System.out.println("waiting for thread to finish");
+                synchronized (sync) {
+                    sync.wait();
+                }
+                System.out.println("done");
+
+                return "Foo";
+            }
+        };
+
+
+        Promise
+                .when(deferrable)
+                .then(deferrable)
+                .waitForCompletion();
 
     }
 }
