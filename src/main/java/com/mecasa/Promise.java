@@ -26,6 +26,8 @@ public class Promise  {
     };
     private int _numRetries;
     private int _retryDelay;
+    private int _timeout;
+
 
     public interface ExecutorServiceProvider {
         ExecutorService getExecutorService();
@@ -104,13 +106,15 @@ public class Promise  {
 
             for (Future future : _futures) {
                 try {
-                    _values.add(future.get());
+                    _values.add(future.get(_timeout, TimeUnit.MILLISECONDS));
                 } catch (InterruptedException e) {
                     _rejected = _rejected == null ? e : _rejected;
                     break;
                 } catch (ExecutionException e) {
                     _rejected = _rejected == null ? e.getCause() : _rejected;
                     break;
+                } catch (TimeoutException e) {
+                    _rejected = _rejected == null ? e : _rejected;
                 }
             }
 
@@ -221,4 +225,16 @@ public class Promise  {
         _executor = executorService;
         return this;
     }
+
+    /**
+     * Set timeout for the Deferrables. If a asnc task takes longer than the specified time, the promise is rejected
+     * with a TimedOutException.
+     * @param timeout
+     * @return
+     */
+    public Promise timeout(int timeout) {
+        _timeout = timeout;
+        return this;
+    }
+
 }

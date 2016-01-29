@@ -6,10 +6,7 @@ import org.junit.Test;
 
 import java.net.URL;
 import java.util.Scanner;
-import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
+import java.util.concurrent.*;
 
 import static junit.framework.Assert.fail;
 import static junit.framework.TestCase.assertEquals;
@@ -380,4 +377,41 @@ public class PromiseTest {
 
     }
 
+    @Test
+    public void testTimeout() throws Exception {
+        Deferrable deferrable = new Deferrable() {
+            public Object call(Object... params) throws Exception {
+                Thread.sleep(1000);
+                return "Foo";
+            }
+        };
+
+        Promise.when(deferrable).timeout(100)
+                .reject(new Result<Throwable>() {
+                    public void accept(Throwable throwable) {
+                        // we should receive the TimeoutException
+                        if (!(throwable instanceof TimeoutException)) {
+                            fail();
+                        }
+                    }
+                }).resolve(new Result<Object[]>() {
+                     public void accept(Object[] objects) {
+                        fail();
+                    }
+                });
+
+
+        long cp1 = System.currentTimeMillis();
+        ExecutorService executorService = Executors.newFixedThreadPool(1);
+        Promise.when(deferrable).timeout(100)
+                .retries(2)
+                .waitForCompletion();
+        long cp2 = System.currentTimeMillis();
+        final long diff = cp2 - cp1;
+        System.out.println("diff: "+diff);
+
+        // make sure the executor shut down the timed out Futures.
+        assertTrue(diff < 400);
+
+    }
 }
