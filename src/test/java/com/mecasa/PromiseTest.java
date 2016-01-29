@@ -305,6 +305,36 @@ public class PromiseTest {
 
     }
 
+    private static abstract class AsyncDeferrable<T> implements Deferrable<T>, Thread.UncaughtExceptionHandler{
+        private Throwable _rejectReason;
+        private final Object _syncObject = new Object();
+
+        public void uncaughtException(Thread t, Throwable e) {
+            _rejectReason = e;
+            synchronized (_syncObject) {
+                _syncObject.notify();
+            }
+        }
+
+        protected Thread createThread(Runnable runnable) {
+            Thread thread = new Thread(runnable);
+            thread.setUncaughtExceptionHandler(this);
+            return thread;
+        }
+
+        final protected Object getSyncObject() {
+            return _syncObject;
+        }
+
+        final protected void rejectIfError() throws Exception {
+            if (_rejectReason instanceof Exception) {
+                throw (Exception)_rejectReason;
+            }
+
+            throw new Exception(_rejectReason.getMessage());
+        }
+    }
+
 
     @Test
     public void testThreadError() throws Exception {
@@ -338,13 +368,11 @@ public class PromiseTest {
         Promise
                 .when(deferrable)
                 .reject(new Result<Throwable>() {
-                    @Override
                     public void accept(Throwable throwable) {
                         // success
                         System.out.println("Error: "+throwable.getMessage());
                     }
                 }).resolve(new Result<Object[]>() {
-                    @Override
                     public void accept(Object[] objects) {
                         fail();
                     }
