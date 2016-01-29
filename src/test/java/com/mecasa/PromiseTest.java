@@ -388,6 +388,8 @@ public class PromiseTest {
             }
         };
 
+        // test with timeout set for a promise stage
+
         Promise.when(deferrable).timeout(100)
                 .reject(new Result<Throwable>() {
                     public void accept(Throwable throwable) {
@@ -403,7 +405,6 @@ public class PromiseTest {
                 });
 
 
-        // test with timeout set for a promise stage
 
         long cp1 = System.currentTimeMillis();
         ExecutorService executorService = Executors.newFixedThreadPool(1);
@@ -418,10 +419,25 @@ public class PromiseTest {
         assertTrue(diff < 400);
 
 
-        // test with timeout set on a single Deferrable
+        // test timeout set for a single Deferrable
+
+        Promise.when(deferrable.timeout(100))
+                .reject(new Result<Throwable>() {
+                    public void accept(Throwable throwable) {
+                        // we should receive the TimeoutException
+                        if (!(throwable instanceof TimeoutException)) {
+                            fail();
+                        }
+                    }
+                }).resolve(new Result<Object[]>() {
+            public void accept(Object[] objects) {
+                fail();
+            }
+        });
 
         cp1 = System.currentTimeMillis();
-        Promise.when(deferrable.timeout(100).retries(2))
+        Promise.when(deferrable.timeout(100))
+                .retries(2)
                 .waitForCompletion();
         cp2 = System.currentTimeMillis();
         diff = cp2 - cp1;
