@@ -106,7 +106,9 @@ public class Promise  {
 
             for (Future future : _futures) {
                 try {
-                    _values.add(future.get(_timeout, TimeUnit.MILLISECONDS));
+                    _values.add(_timeout > 0 ?
+                        future.get(_timeout, TimeUnit.MILLISECONDS) :
+                        future.get());
                 } catch (InterruptedException e) {
                     _rejected = _rejected == null ? e : _rejected;
                     break;

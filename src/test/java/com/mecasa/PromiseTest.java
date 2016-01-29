@@ -83,7 +83,9 @@ public class PromiseTest {
         long ct1 = System.currentTimeMillis();
         Promise.when(deferrable).waitForCompletion();
         long ct2 = System.currentTimeMillis();
-        assertTrue(ct2 >= ct1 + 100);
+        final long diff = ct2 - ct1;
+        System.out.println("DIff: "+diff);
+        assertTrue(diff >= 100);
     }
 
 
