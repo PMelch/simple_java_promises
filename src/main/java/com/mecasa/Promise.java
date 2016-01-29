@@ -104,10 +104,17 @@ public class Promise  {
                 }));
             }
 
-            for (Future future : _futures) {
+            assert(_deferrables.size() == _futures.size());
+
+            for (int t = 0; t<_futures.size(); t++) {
+                Future future = _futures.get(t);
+
+                int timeout = _deferrables.get(t).getTimeout();
+                if (timeout == 0) timeout = _timeout;
+
                 try {
-                    _values.add(_timeout > 0 ?
-                        future.get(_timeout, TimeUnit.MILLISECONDS) :
+                    _values.add(timeout > 0 ?
+                        future.get(timeout, TimeUnit.MILLISECONDS) :
                         future.get());
                 } catch (InterruptedException e) {
                     _rejected = _rejected == null ? e : _rejected;

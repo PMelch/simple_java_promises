@@ -36,7 +36,7 @@ public class PromiseTest {
     }
 
 
-    public static class TestDeferrable implements Deferrable<String> {
+    public static class TestDeferrable extends Deferrable<String> {
 
         public Object[] params;
 
@@ -304,7 +304,7 @@ public class PromiseTest {
 
     }
 
-    private static abstract class AsyncDeferrable<T> implements Deferrable<T>, Thread.UncaughtExceptionHandler{
+    private static abstract class AsyncDeferrable<T> extends Deferrable<T> implements Thread.UncaughtExceptionHandler{
         private Throwable _rejectReason;
         private final Object _syncObject = new Object();
 
@@ -403,17 +403,34 @@ public class PromiseTest {
                 });
 
 
+        // test with timeout set for a promise stage
+
         long cp1 = System.currentTimeMillis();
         ExecutorService executorService = Executors.newFixedThreadPool(1);
         Promise.when(deferrable).timeout(100)
                 .retries(2)
                 .waitForCompletion();
         long cp2 = System.currentTimeMillis();
-        final long diff = cp2 - cp1;
+        long diff = cp2 - cp1;
         System.out.println("diff: "+diff);
 
         // make sure the executor shut down the timed out Futures.
         assertTrue(diff < 400);
+
+
+        // test with timeout set on a single Deferrable
+
+        cp1 = System.currentTimeMillis();
+        Promise.when(deferrable.timeout(100).retries(2))
+                .waitForCompletion();
+        cp2 = System.currentTimeMillis();
+        diff = cp2 - cp1;
+        System.out.println("diff: "+diff);
+
+        // make sure the executor shut down the timed out Futures.
+        assertTrue(diff < 400);
+
+
 
     }
 }
