@@ -27,7 +27,7 @@ public class Promise  {
     private int _numRetries;
     private int _retryDelay;
     private int _timeout;
-
+    private boolean _fulfilled = false;
 
     public interface ExecutorServiceProvider {
         ExecutorService getExecutorService();
@@ -90,6 +90,10 @@ public class Promise  {
     }
 
     private void submitAndWaitForResults()  {
+        if (_fulfilled) {
+            return;
+        }
+
         if (_executor == null) {
             _executor = sExecutorServiceProvider.getExecutorService();
         }
@@ -122,12 +126,12 @@ public class Promise  {
 
             for (int t = 0; t< numDeferrables; t++) {
 
-                final Deferrable deferrable = _deferrables.get(t);
-
                 // if there is a valid result for this deferrable continue with the next.
                 if (resultsRetrieved[t]) {
                     continue;
                 }
+
+                final Deferrable deferrable = _deferrables.get(t);
 
                 deferrableSubmitted = true;
 
@@ -141,13 +145,13 @@ public class Promise  {
             }
 
             if (!deferrableSubmitted) {
+                _fulfilled = true;
                 // we're done here...
                 return;
             }
 
             for (int t = 0; t< numDeferrables; t++) {
 
-                final Deferrable deferrable = _deferrables.get(t);
                 final Future future = _futures.get(t);
                 // if there is no future at this slot
                 // ( ie there was nothing submitted cause there was a valid result already)
@@ -155,6 +159,8 @@ public class Promise  {
                 if (future == null) {
                     continue;
                 }
+
+                final Deferrable deferrable = _deferrables.get(t);
 
                 int timeout = deferrable.getTimeout();
                 if (timeout < 0) timeout = _timeout;
@@ -182,17 +188,19 @@ public class Promise  {
                         if (_rejected == null) {
                             _rejected = rejected;
                         }
+                        // max num retries reached. break out of the whole promise stage.
                         return;
                     } else {
                         --retries[t];
-                        try {
-                            Thread.sleep(retryDelays[t]);
-                        } catch (InterruptedException e) {
+                        if (retryDelays[t]>0) {
+                            try {
+                                Thread.sleep(retryDelays[t]);
+                            } catch (InterruptedException e) {
+                            }
                         }
                     }
                 } else {
                     // valid result
-                    break;
                 }
             }
         }

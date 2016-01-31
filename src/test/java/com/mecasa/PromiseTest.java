@@ -36,16 +36,6 @@ public class PromiseTest {
     }
 
 
-    public static class TestDeferrable extends Deferrable<String> {
-
-        public Object[] params;
-
-        public String call(Object... params) {
-            this.params = params;
-            return null;
-        }
-    }
-
     @Test
     public void testCallParameters() throws Exception {
         Deferrable<String> deferrable = new Deferrable<String>() {
@@ -54,20 +44,20 @@ public class PromiseTest {
             }
         };
 
-        final TestDeferrable deferrable1 = new TestDeferrable() {
-            @Override
-            public String call(Object... params) {
-                super.call(params);
-                return "World";
-            }
-        };
-
         Promise.when(deferrable)
-                .then(deferrable1)
-                .waitForCompletion();
+                .resolve(new Result<Object[]>() {
+                    @Override
+                    public void accept(Object[] objects) {
+                        assertEquals(1, objects.length);
+                        assertEquals("Hello", objects[0]);
+                    }
+                }).reject(new Result<Throwable>() {
+            @Override
+            public void accept(Throwable throwable) {
+                fail();
+            }
+        });
 
-        assertEquals(1, deferrable1.params.length);
-        assertEquals("Hello", deferrable1.params[0]);
 
     }
 
@@ -93,10 +83,9 @@ public class PromiseTest {
     public void testPromiseMultiCompletion() throws Exception {
         long ct1 = System.currentTimeMillis();
 
-        final TestDeferrable resultDeferrable = new TestDeferrable() {
+        final Deferrable<String> resultDeferrable = new Deferrable<String>() {
             @Override
             public String call(Object... params) {
-                super.call(params);
                 return "World";
             }
         };
@@ -110,8 +99,21 @@ public class PromiseTest {
                 Thread.sleep(200);
                 return "World";
             }
-        }).then(resultDeferrable)
-                .waitForCompletion();
+        }).resolve(new Result<Object[]>() {
+            @Override
+            public void accept(Object[] objects) {
+                assertEquals(2, objects.length);
+                assertEquals("Hello", objects[0]);
+                assertEquals("World", objects[1]);
+
+            }
+        }).reject(new Result<Throwable>() {
+            @Override
+            public void accept(Throwable throwable) {
+                fail();
+            }
+        });
+
 
         long ct2 = System.currentTimeMillis();
         long diff = ct2 - ct1;
@@ -119,11 +121,29 @@ public class PromiseTest {
         assertTrue(diff >= 200);
         assertTrue(diff <= 250);
 
-        assertEquals(2, resultDeferrable.params.length);
-        assertEquals("Hello", resultDeferrable.params[0]);
-        assertEquals("World", resultDeferrable.params[1]);
     }
 
+    @Test
+    public void testParallelExecution() throws Exception {
+        long ct1 = System.currentTimeMillis();
+
+        Promise.when(new Deferrable<String>() {
+            public String call(Object... params) throws Exception {
+                Thread.sleep(100);
+                return "Hello";
+            }
+        }, new Deferrable<String>() {
+            public String call(Object... params) throws Exception {
+                Thread.sleep(100);
+                return "World";
+            }
+        }).waitForCompletion();
+
+        long ct2 = System.currentTimeMillis();
+        long diff = ct2 - ct1;
+        assertTrue(diff < 200);
+
+    }
 
     @Test
     public void testPromiseCompletionChain() throws Exception {
@@ -302,7 +322,7 @@ public class PromiseTest {
         };
 
         long ct1 = System.currentTimeMillis();
-        Promise.when(retryDeferrable.retriesWithDelay(3, 100), delayedDeferrable)
+        Promise.when(delayedDeferrable, retryDeferrable.retriesWithDelay(3, 100))
                 .reject(new Result<Throwable>() {
                     public void accept(Throwable throwable) {
                         fail();
@@ -311,8 +331,8 @@ public class PromiseTest {
                 .resolve(new Result<Object[]>() {
                     public void accept(Object[] objects) {
                         assertEquals(2, objects.length);
-                        assertEquals("Foo", objects[0]);
-                        assertEquals("Bar", objects[1]);
+                        assertEquals("Foo", objects[1]);
+                        assertEquals("Bar", objects[0]);
                     }
                 });
         long ct2 = System.currentTimeMillis();
@@ -320,7 +340,7 @@ public class PromiseTest {
 
         // make sure that only the first deferrable was re-run after failing.
         // the second one ( the one with the long delay ) was only run once
-        assertTrue(diff < 1300);
+        assertTrue(diff < 1400);
     }
 
 
