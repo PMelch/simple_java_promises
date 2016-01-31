@@ -536,6 +536,20 @@ public class PromiseTest {
 
         // make sure the executor shut down the timed out Futures.
         assertTrue(diff < 400);
+
+
+
+        // retry on Deferrable
+        cp1 = System.currentTimeMillis();
+        Promise.when(deferrable.timeout(100).retries(2))
+                .waitForCompletion();
+        cp2 = System.currentTimeMillis();
+        diff = cp2 - cp1;
+        System.out.println("diff: "+diff);
+
+        // make sure the executor shut down the timed out Futures.
+        assertTrue(diff < 400);
+
     }
 
     @Test

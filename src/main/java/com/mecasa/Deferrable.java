@@ -34,6 +34,12 @@ public abstract class Deferrable<T> {
         return this;
     }
 
+    public Deferrable<T> retries(int numRetries) {
+        _retries = numRetries;
+        _retryDelay = -1;
+        return this;
+    }
+
     public int getRetries() {
         return _retries;
     }
