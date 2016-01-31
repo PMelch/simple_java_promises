@@ -7,7 +7,9 @@ package com.mecasa;
  */
 public abstract class Deferrable<T> {
 
-    private int _timeout;
+    private int _timeout = -1;
+    private int _retryDelay = -1;
+    private int _retries = -1;
 
     abstract T call(Object... params) throws Exception;
 
@@ -24,5 +26,19 @@ public abstract class Deferrable<T> {
 
     public int getTimeout() {
         return _timeout;
+    }
+
+    public Deferrable<T> retriesWithDelay(int numRetries, int delay) {
+        _retries = numRetries;
+        _retryDelay = delay;
+        return this;
+    }
+
+    public int getRetries() {
+        return _retries;
+    }
+
+    public int getRetryDelay() {
+        return _retryDelay;
     }
 }

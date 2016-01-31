@@ -95,60 +95,107 @@ public class Promise  {
         }
         final Object[] params = _params;
 
-        for(;;) {
-            for (final Deferrable deferrable : _deferrables) {
-                _futures.add(_executor.submit(new Callable<Object>() {
+        int numDeferrables = _deferrables.size();
+        _futures.setSize(numDeferrables);
+        _values.setSize(numDeferrables);
+
+        int[] retries = new int[numDeferrables];
+        int[] retryDelays = new int[numDeferrables];
+        boolean[] resultsRetrieved = new boolean[numDeferrables];
+
+        for (int t = 0; t< numDeferrables; t++) {
+            final Deferrable deferrable = _deferrables.get(t);
+
+            // fetch num retries ( either from the deferrable or from the promise )
+            int numTries = deferrable.getRetries();
+            if (numTries < 0) numTries = _numRetries;
+            retries[t] = numTries;
+
+            // fetch retry delay ( either from the deferrable or from the promise )
+            int retryDelay = deferrable.getRetryDelay();
+            if (retryDelay < 0) retryDelay = _retryDelay;
+            retryDelays[t] = retryDelay;
+        }
+
+        for (;;) {
+            boolean deferrableSubmitted = false;
+
+            for (int t = 0; t< numDeferrables; t++) {
+
+                final Deferrable deferrable = _deferrables.get(t);
+
+                // if there is a valid result for this deferrable continue with the next.
+                if (resultsRetrieved[t]) {
+                    continue;
+                }
+
+                deferrableSubmitted = true;
+
+                Future<Object> future = _executor.submit(new Callable<Object>() {
                     public Object call() throws Exception {
                         return deferrable.call(params);
                     }
-                }));
+                });
+
+                _futures.set(t, future);
             }
 
-            assert(_deferrables.size() == _futures.size());
+            if (!deferrableSubmitted) {
+                // we're done here...
+                return;
+            }
 
-            for (int t = 0; t<_futures.size(); t++) {
-                Future future = _futures.get(t);
+            for (int t = 0; t< numDeferrables; t++) {
 
-                int timeout = _deferrables.get(t).getTimeout();
-                if (timeout == 0) timeout = _timeout;
+                final Deferrable deferrable = _deferrables.get(t);
+                final Future future = _futures.get(t);
+                // if there is no future at this slot
+                // ( ie there was nothing submitted cause there was a valid result already)
+                // skip this one.
+                if (future == null) {
+                    continue;
+                }
 
+                int timeout = deferrable.getTimeout();
+                if (timeout < 0) timeout = _timeout;
+
+                Throwable rejected = null;
                 try {
-                    _values.add(timeout > 0 ?
-                        future.get(timeout, TimeUnit.MILLISECONDS) :
-                        future.get());
+                    Object value = timeout > 0 ?
+                            future.get(timeout, TimeUnit.MILLISECONDS) :
+                            future.get();
+                    _values.set(t, value);
+                    resultsRetrieved[t] = true;
                 } catch (InterruptedException e) {
-                    _rejected = _rejected == null ? e : _rejected;
-                    break;
+                    rejected = e;
                 } catch (ExecutionException e) {
-                    _rejected = _rejected == null ? e.getCause() : _rejected;
-                    break;
+                    rejected = e.getCause();
                 } catch (TimeoutException e) {
-                    _rejected = _rejected == null ? e : _rejected;
+                    rejected = e;
+                }
+
+                // so delete the current future.
+                _futures.set(t, null);
+
+                if (rejected != null) {
+                    if (retries[t] == 0) {
+                        if (_rejected == null) {
+                            _rejected = rejected;
+                        }
+                        return;
+                    } else {
+                        --retries[t];
+                        try {
+                            Thread.sleep(retryDelays[t]);
+                        } catch (InterruptedException e) {
+                        }
+                    }
+                } else {
+                    // valid result
+                    break;
                 }
             }
-
-            if (_numRetries == 0) {
-                break;
-            }
-
-            if (_retryDelay > 0) {
-                try {
-                    Thread.sleep(_retryDelay);
-                } catch (InterruptedException ignored) {
-                }
-            }
-
-            // retry everything.
-            _rejected = null;
-            --_numRetries;
-            _values.clear();
-            _futures.clear();
         }
-
-        // remove all pending futures and deferrables
-        _deferrables.clear();
-        _params = null;
-        _futures.clear();
     }
 
 
