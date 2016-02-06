@@ -11,8 +11,6 @@ import java.util.concurrent.*;
 import static junit.framework.Assert.fail;
 import static junit.framework.TestCase.assertEquals;
 import static org.junit.Assert.assertTrue;
-import static org.mockito.Matchers.any;
-import static org.mockito.Mockito.*;
 
 /**
  * User: peter
@@ -46,13 +44,11 @@ public class PromiseTest {
 
         Promise.when(deferrable)
                 .resolve(new Result<Object[]>() {
-                    @Override
                     public void accept(Object[] objects) {
                         assertEquals(1, objects.length);
                         assertEquals("Hello", objects[0]);
                     }
                 }).reject(new Result<Throwable>() {
-            @Override
             public void accept(Throwable throwable) {
                 fail();
             }
@@ -83,12 +79,6 @@ public class PromiseTest {
     public void testPromiseMultiCompletion() throws Exception {
         long ct1 = System.currentTimeMillis();
 
-        final Deferrable<String> resultDeferrable = new Deferrable<String>() {
-            @Override
-            public String call(Object... params) {
-                return "World";
-            }
-        };
         Promise.when(new Deferrable<String>() {
             public String call(Object... params) throws Exception {
                 Thread.sleep(100);
@@ -100,7 +90,6 @@ public class PromiseTest {
                 return "World";
             }
         }).resolve(new Result<Object[]>() {
-            @Override
             public void accept(Object[] objects) {
                 assertEquals(2, objects.length);
                 assertEquals("Hello", objects[0]);
@@ -108,7 +97,6 @@ public class PromiseTest {
 
             }
         }).reject(new Result<Throwable>() {
-            @Override
             public void accept(Throwable throwable) {
                 fail();
             }
@@ -209,11 +197,11 @@ public class PromiseTest {
     public void testWebAccess() throws Exception {
         Promise.when(new Deferrable<String>() {
             public String call(Object... params) throws Exception {
-                return new Scanner(new URL("http://www.melchart.com").openStream(), "UTF-8").useDelimiter("\\A").next();
+                return new Scanner(new URL("http://www.google.com").openStream(), "UTF-8").useDelimiter("\\A").next();
             }
         }, new Deferrable<String>() {
             public String call(Object... params) throws Exception {
-                return new Scanner(new URL("http://www.orf.at").openStream(), "UTF-8").useDelimiter("\\A").next();
+                return new Scanner(new URL("http://www.stackoverflow.com").openStream(), "UTF-8").useDelimiter("\\A").next();
             }
         }).resolve(new Result<Object[]>() {
             public void accept(Object[] objects) {
@@ -275,12 +263,6 @@ public class PromiseTest {
                     }
                 });
 
-
-        Deferrable<String> passingDeferrable = new Deferrable<String>() {
-            public String call(Object... params) throws Exception {
-                return "Foo";
-            }
-        };
 
         long ct1 = System.currentTimeMillis();
         Promise.when(failingDeferrable)
@@ -346,6 +328,7 @@ public class PromiseTest {
 
     @Test
     public void testParameters() throws Exception {
+        // empty Deferrable list is illegal, so expect an Exception
         try {
             Promise.when().waitForCompletion();
             fail();
@@ -498,7 +481,6 @@ public class PromiseTest {
 
 
         long cp1 = System.currentTimeMillis();
-        ExecutorService executorService = Executors.newFixedThreadPool(1);
         Promise.when(deferrable).timeout(100)
                 .retries(2)
                 .waitForCompletion();
@@ -560,13 +542,11 @@ public class PromiseTest {
                 return null;
             }
         }).resolve(new Result<Object[]>() {
-            @Override
             public void accept(Object[] objects) {
                 assertEquals(1, objects.length);
                 assertEquals(null, objects[0]);
             }
         }).reject(new Result<Throwable>() {
-            @Override
             public void accept(Throwable throwable) {
                 fail();
             }
