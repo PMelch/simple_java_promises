@@ -217,24 +217,6 @@ public class PromiseTest {
         });
     }
 
-/*    @Test
-    public void testSettingExecutor() throws Exception {
-        ExecutorService executorService = mock(ExecutorService.class);
-        when(executorService.submit(any(Callable.class))).thenReturn(mock(Future.class));
-
-        final Deferrable<String> deferrable = new Deferrable<String>() {
-            public String call(Object... params) throws Exception {
-                return "Foo";
-            }
-        };
-        Promise.when(deferrable).setExecutor(executorService)
-                .then(deferrable)
-                .waitForCompletion();
-
-        // make sure the executor has been passed through all promises
-        verify(executorService, times(2)).submit(any(Callable.class));
-    }
-*/
     @Test
     public void testRetry() throws Exception {
         Deferrable<String> failingDeferrable = new Deferrable<String>() {
@@ -551,6 +533,41 @@ public class PromiseTest {
                 fail();
             }
         });
+    }
+
+
+    @Test
+    public void testPassingValues() throws Exception {
+        // we create a promise that should pass through the values to each stage. only the
+        // last stage should return only one value to the resolve call.
+
+        Promise.when(new Deferrable<Integer>() {
+            @Override
+            Integer call(Object... params) throws Exception {
+                return 10;
+            }
+        }).setExecutor( new BlockingTestExecutor())
+          .passResultsThrough(true)
+          .then(new Deferrable<Integer>() {
+            @Override
+            Integer call(Object... params) throws Exception {
+                assertEquals(1, params.length);
+                return ((Integer)params[0]) + 20;
+            }
+        }).then(new Deferrable<Integer>() {
+            @Override
+            Integer call(Object... params) throws Exception {
+                assertEquals(2, params.length);
+                return ((Integer)params[0]) + ((Integer)params[1]) + 30;
+            }
+        }).passResultsThrough(false)    // collapse to one result
+          .resolve(new Result<Object[]>() {
+            public void accept(Object[] objects) {
+                assertEquals(1, objects.length);
+                assertEquals(70, objects[0]);
+            }
+        });
 
     }
+
 }

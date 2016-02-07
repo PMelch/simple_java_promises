@@ -4,6 +4,7 @@ package com.mecasa;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.Arrays;
 import java.util.Vector;
 import java.util.concurrent.*;
 
@@ -28,6 +29,7 @@ public class Promise  {
     private int _retryDelay;
     private int _timeout;
     private boolean _fulfilled = false;
+    private boolean _passValues = false;
 
     public interface ExecutorServiceProvider {
         ExecutorService getExecutorService();
@@ -101,7 +103,15 @@ public class Promise  {
 
         int numDeferrables = _deferrables.size();
         _futures.setSize(numDeferrables);
-        _values.setSize(numDeferrables);
+        int valuesStartIndex = 0;
+        if (_passValues && params != null) {
+            final int numParams = params.length;
+            _values.addAll(Arrays.asList(params));
+            _values.setSize(numDeferrables + numParams);
+            valuesStartIndex = numParams;
+        } else {
+            _values.setSize(numDeferrables);
+        }
 
         int[] retries = new int[numDeferrables];
         int[] retryDelays = new int[numDeferrables];
@@ -170,7 +180,7 @@ public class Promise  {
                     Object value = timeout > 0 ?
                             future.get(timeout, TimeUnit.MILLISECONDS) :
                             future.get();
-                    _values.set(t, value);
+                    _values.set(t + valuesStartIndex, value);
                     resultsRetrieved[t] = true;
                 } catch (InterruptedException e) {
                     rejected = e;
@@ -219,9 +229,20 @@ public class Promise  {
         submitAndWaitForResults();
         // forward any rejected error to the next promise
         if (_rejected != null) {
-            return new Promise(_rejected).setExecutor(_executor);
+            return configureNewPromise(new Promise(_rejected));
         }
-        return new Promise(deferrableList, _values).setExecutor(_executor);
+        return configureNewPromise(new Promise(deferrableList, _values));
+    }
+
+    /**
+     * pass on all relevant properties from this promise to the next.
+     * @param promise
+     * @return
+     */
+    private Promise configureNewPromise(Promise promise) {
+        promise.setExecutor(_executor);
+        promise.passResultsThrough(_passValues);
+        return promise;
     }
 
 
@@ -300,5 +321,33 @@ public class Promise  {
         _timeout = timeout;
         return this;
     }
+
+    /**
+     * By default each stage of execution gets passed the return value(s) of the previous stage. By calling
+     * passResultsThrough(true), each following stage gets called with a list of all results of all previous stages.
+     * <p>
+     *     So in this scenario
+     * <pre>
+     *     Promise.when(calcValue1).passResultsThrough(true)
+     *            .then(calcValue2)
+     *            .then(calcValue3)
+     *            .resolve(resultCallback);
+     * </pre>
+     *  calcValue2 will be called with the result generated from calcValue1, calcValue3 will be called with both the results
+     *  of calcValue1 and calcValue2 and the resultCallback will be called with an Object[] list containing the results
+     *  of calcValue1, calcValue2 and calcValue3.
+     *
+     *  if the call to passResultsThrough was omitted the resultCallback would have been called with the result of calcValue3 alone.
+     * </p>
+     *
+     *
+     * @param pass
+     * @return
+     */
+    public Promise passResultsThrough(boolean passThrough) {
+        _passValues = passThrough;
+        return this;
+    }
+
 
 }
