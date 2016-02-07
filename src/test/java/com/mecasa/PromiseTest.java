@@ -201,7 +201,7 @@ public class PromiseTest {
             }
         }, new Deferrable<String>() {
             public String call(Object... params) throws Exception {
-                return new Scanner(new URL("http://www.stackoverflow.com").openStream(), "UTF-8").useDelimiter("\\A").next();
+                return new Scanner(new URL("http://www.example.com").openStream(), "UTF-8").useDelimiter("\\A").next();
             }
         }).resolve(new Result<Object[]>() {
             public void accept(Object[] objects) {
