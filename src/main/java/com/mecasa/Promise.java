@@ -341,7 +341,7 @@ public class Promise  {
      * </p>
      *
      *
-     * @param pass
+     * @param passThrough
      * @return
      */
     public Promise passResultsThrough(boolean passThrough) {
