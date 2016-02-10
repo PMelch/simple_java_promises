@@ -4,6 +4,7 @@ package com.mecasa;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.Arrays;
 import java.util.Vector;
 import java.util.concurrent.*;
 
@@ -26,6 +27,9 @@ public class Promise  {
     };
     private int _numRetries;
     private int _retryDelay;
+    private int _timeout;
+    private boolean _fulfilled = false;
+    private boolean _passValues = false;
 
     public interface ExecutorServiceProvider {
         ExecutorService getExecutorService();
@@ -88,54 +92,128 @@ public class Promise  {
     }
 
     private void submitAndWaitForResults()  {
+        if (_fulfilled) {
+            return;
+        }
+
         if (_executor == null) {
             _executor = sExecutorServiceProvider.getExecutorService();
         }
         final Object[] params = _params;
 
-        for(;;) {
-            for (final Deferrable deferrable : _deferrables) {
-                _futures.add(_executor.submit(new Callable<Object>() {
+        int numDeferrables = _deferrables.size();
+        _futures.setSize(numDeferrables);
+        int valuesStartIndex = 0;
+        if (_passValues && params != null) {
+            final int numParams = params.length;
+            _values.addAll(Arrays.asList(params));
+            _values.setSize(numDeferrables + numParams);
+            valuesStartIndex = numParams;
+        } else {
+            _values.setSize(numDeferrables);
+        }
+
+        int[] retries = new int[numDeferrables];
+        int[] retryDelays = new int[numDeferrables];
+        boolean[] resultsRetrieved = new boolean[numDeferrables];
+
+        for (int t = 0; t< numDeferrables; t++) {
+            final Deferrable deferrable = _deferrables.get(t);
+
+            // fetch num retries ( either from the deferrable or from the promise )
+            int numTries = deferrable.getRetries();
+            if (numTries < 0) numTries = _numRetries;
+            retries[t] = numTries;
+
+            // fetch retry delay ( either from the deferrable or from the promise )
+            int retryDelay = deferrable.getRetryDelay();
+            if (retryDelay < 0) retryDelay = _retryDelay;
+            retryDelays[t] = retryDelay;
+        }
+
+        for (;;) {
+            boolean deferrableSubmitted = false;
+
+            for (int t = 0; t< numDeferrables; t++) {
+
+                // if there is a valid result for this deferrable continue with the next.
+                if (resultsRetrieved[t]) {
+                    continue;
+                }
+
+                final Deferrable deferrable = _deferrables.get(t);
+
+                deferrableSubmitted = true;
+
+                Future<Object> future = _executor.submit(new Callable<Object>() {
                     public Object call() throws Exception {
                         return deferrable.call(params);
                     }
-                }));
+                });
+
+                _futures.set(t, future);
             }
 
-            for (Future future : _futures) {
+            if (!deferrableSubmitted) {
+                _fulfilled = true;
+                // we're done here...
+                return;
+            }
+
+            for (int t = 0; t< numDeferrables; t++) {
+
+                final Future future = _futures.get(t);
+                // if there is no future at this slot
+                // ( ie there was nothing submitted cause there was a valid result already)
+                // skip this one.
+                if (future == null) {
+                    continue;
+                }
+
+                final Deferrable deferrable = _deferrables.get(t);
+
+                int timeout = deferrable.getTimeout();
+                if (timeout < 0) timeout = _timeout;
+
+                Throwable rejected = null;
                 try {
-                    _values.add(future.get());
+                    Object value = timeout > 0 ?
+                            future.get(timeout, TimeUnit.MILLISECONDS) :
+                            future.get();
+                    _values.set(t + valuesStartIndex, value);
+                    resultsRetrieved[t] = true;
                 } catch (InterruptedException e) {
-                    _rejected = _rejected == null ? e : _rejected;
-                    break;
+                    rejected = e;
                 } catch (ExecutionException e) {
-                    _rejected = _rejected == null ? e.getCause() : _rejected;
-                    break;
+                    rejected = e.getCause();
+                } catch (TimeoutException e) {
+                    rejected = e;
+                }
+
+                // so delete the current future.
+                _futures.set(t, null);
+
+                if (rejected != null) {
+                    if (retries[t] == 0) {
+                        if (_rejected == null) {
+                            _rejected = rejected;
+                        }
+                        // max num retries reached. break out of the whole promise stage.
+                        return;
+                    } else {
+                        --retries[t];
+                        if (retryDelays[t]>0) {
+                            try {
+                                Thread.sleep(retryDelays[t]);
+                            } catch (InterruptedException e) {
+                            }
+                        }
+                    }
+                } else {
+                    // valid result
                 }
             }
-
-            if (_numRetries == 0) {
-                break;
-            }
-
-            if (_retryDelay > 0) {
-                try {
-                    Thread.sleep(_retryDelay);
-                } catch (InterruptedException e) {
-                }
-            }
-
-            // retry everything.
-            _rejected = null;
-            --_numRetries;
-            _values.clear();
-            _futures.clear();
         }
-
-        // remove all pending futures and deferrables
-        _deferrables.clear();
-        _params = null;
-        _futures.clear();
     }
 
 
@@ -143,7 +221,7 @@ public class Promise  {
      * Schedules a new set of {@link Deferrable}s after the current set have completed their tasks.
      * Each {@link Deferrable#call(Object...)} will get the results of the previous task as parameters.
      * The order of the parameters correlates with the order of the Deferrables when being passed
-     * to {@link Promise#when(Deferrable[])} or preceding calls to {@link Promise#then(Deferrable[])}.
+     * to {@link #when(Deferrable[])} or preceding calls to {@link#then(Deferrable[])}.
      * @param deferrableList
      * @return the chained Promise
      */
@@ -151,9 +229,20 @@ public class Promise  {
         submitAndWaitForResults();
         // forward any rejected error to the next promise
         if (_rejected != null) {
-            return new Promise(_rejected).setExecutor(_executor);
+            return configureNewPromise(new Promise(_rejected));
         }
-        return new Promise(deferrableList, _values).setExecutor(_executor);
+        return configureNewPromise(new Promise(deferrableList, _values));
+    }
+
+    /**
+     * pass on all relevant properties from this promise to the next.
+     * @param promise
+     * @return
+     */
+    private Promise configureNewPromise(Promise promise) {
+        promise.setExecutor(_executor);
+        promise.passResultsThrough(_passValues);
+        return promise;
     }
 
 
@@ -175,7 +264,7 @@ public class Promise  {
 
     /**
      * A call to reject will trigger a call to the passed {@link Result#accept(Object)} with the first error that
-     * has occured in the processed list of deferrables. If an error has occured the result callback passed with {@link #resolve(Result)} will
+     * has occurred in the processed list of deferrables. If an error has occured the result callback passed with {@link #resolve(Result)} will
      * not be triggered.
      * @param e
      * @return the chained Promise
@@ -221,4 +310,44 @@ public class Promise  {
         _executor = executorService;
         return this;
     }
+
+    /**
+     * Set timeout for the Deferrables. If a asnc task takes longer than the specified time, the promise is rejected
+     * with a TimedOutException.
+     * @param timeout
+     * @return
+     */
+    public Promise timeout(int timeout) {
+        _timeout = timeout;
+        return this;
+    }
+
+    /**
+     * By default each stage of execution gets passed the return value(s) of the previous stage. By calling
+     * passResultsThrough(true), each following stage gets called with a list of all results of all previous stages.
+     * <p>
+     *     So in this scenario
+     * <pre>
+     *     Promise.when(calcValue1).passResultsThrough(true)
+     *            .then(calcValue2)
+     *            .then(calcValue3)
+     *            .resolve(resultCallback);
+     * </pre>
+     *  calcValue2 will be called with the result generated from calcValue1, calcValue3 will be called with both the results
+     *  of calcValue1 and calcValue2 and the resultCallback will be called with an Object[] list containing the results
+     *  of calcValue1, calcValue2 and calcValue3.
+     *
+     *  if the call to passResultsThrough was omitted the resultCallback would have been called with the result of calcValue3 alone.
+     * </p>
+     *
+     *
+     * @param passThrough
+     * @return
+     */
+    public Promise passResultsThrough(boolean passThrough) {
+        _passValues = passThrough;
+        return this;
+    }
+
+
 }
