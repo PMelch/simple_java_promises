@@ -1,4 +1,4 @@
-package com.mecasa;
+package com.mecasa.jspromise;
 
 /**
  * Created by pmelc on 25/01/16.

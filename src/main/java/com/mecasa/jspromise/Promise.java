@@ -1,4 +1,4 @@
-package com.mecasa;
+package com.mecasa.jspromise;
 
 
 import org.jetbrains.annotations.NotNull;
@@ -197,6 +197,7 @@ public class Promise  {
                     if (retries[t] == 0) {
                         if (_rejected == null) {
                             _rejected = rejected;
+                            _fulfilled = true;
                         }
                         // max num retries reached. break out of the whole promise stage.
                         return;
