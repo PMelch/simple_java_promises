@@ -1,4 +1,4 @@
-package com.mecasa;
+package com.mecasa.jspromise;
 
 import org.jetbrains.annotations.NotNull;
 

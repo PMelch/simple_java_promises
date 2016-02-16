@@ -1,4 +1,4 @@
-package com.mecasa;
+package com.mecasa.jspromise;
 
 import org.junit.After;
 import org.junit.Before;
@@ -161,22 +161,48 @@ public class PromiseTest {
             public String call(Object... params) throws Exception {
                 throw new IllegalArgumentException("Error");
             }
-        }).then(new Deferrable<String>() {
+        })
+        .then(new Deferrable<String>() {
             public String call(Object... params) throws Exception {
                 fail();
                 return null;
             }
-        }).resolve(new Result<Object[]>() {
+        })
+        .resolve(new Result<Object[]>() {
             public void accept(Object[] objects) {
                 fail();
             }
         })
-                .reject(new Result<Throwable>() {
+        .reject(new Result<Throwable>() {
                     public void accept(Throwable throwable) {
                         System.out.println(throwable.getMessage());
                     }
                 });
     }
+
+    @Test
+    public void testErrorWithoutRecall() throws Exception {
+        Promise.when(new Deferrable<String>() {
+            int callCount = 0;
+            public String call(Object... params) throws Exception {
+                ++callCount;
+                assertTrue(callCount == 1);
+                throw new IllegalArgumentException("Error");
+            }
+        })
+        .resolve(new Result<Object[]>() {
+                    public void accept(Object[] objects) {
+                        fail();
+                    }
+                })
+        .reject(new Result<Throwable>() {
+            public void accept(Throwable throwable) {
+                System.out.println(throwable.getMessage());
+            }
+        })
+        .waitForCompletion();
+    }
+
 
 
     @Test
@@ -279,7 +305,7 @@ public class PromiseTest {
 
         Deferrable<String> delayedDeferrable = new Deferrable<String>() {
             @Override
-            String call(Object... params) throws Exception {
+            public String call(Object... params) throws Exception {
                 Thread.sleep(1000);
                 return "Bar";
             }
@@ -520,7 +546,7 @@ public class PromiseTest {
     public void testValidNullResult() throws Exception {
         Promise.when(new Deferrable<String>() {
             @Override
-            String call(Object... params) throws Exception {
+            public String call(Object... params) throws Exception {
                 return null;
             }
         }).resolve(new Result<Object[]>() {
@@ -543,20 +569,20 @@ public class PromiseTest {
 
         Promise.when(new Deferrable<Integer>() {
             @Override
-            Integer call(Object... params) throws Exception {
+            public Integer call(Object... params) throws Exception {
                 return 10;
             }
         }).setExecutor( new BlockingTestExecutor())
           .passResultsThrough(true)
           .then(new Deferrable<Integer>() {
             @Override
-            Integer call(Object... params) throws Exception {
+            public Integer call(Object... params) throws Exception {
                 assertEquals(1, params.length);
                 return ((Integer)params[0]) + 20;
             }
         }).then(new Deferrable<Integer>() {
             @Override
-            Integer call(Object... params) throws Exception {
+            public Integer call(Object... params) throws Exception {
                 assertEquals(2, params.length);
                 return ((Integer)params[0]) + ((Integer)params[1]) + 30;
             }
@@ -570,4 +596,24 @@ public class PromiseTest {
 
     }
 
+
+    @Test
+    public void testAsyncness() throws Exception {
+        long ct1 = System.currentTimeMillis();
+
+        Promise.when(new Deferrable<String>() {
+            @Override
+            public String call(Object... params) throws Exception {
+                Thread.sleep(100);
+                return null;
+            }
+        }).resolve(new Result<Object[]>() {
+            public void accept(Object[] objects) {
+            }
+        });
+
+        long ct2 = System.currentTimeMillis();
+        assertTrue(ct2-ct1<100);
+
+    }
 }
