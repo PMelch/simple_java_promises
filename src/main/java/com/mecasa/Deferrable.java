@@ -11,7 +11,7 @@ public abstract class Deferrable<T> {
     private int _retryDelay = -1;
     private int _retries = -1;
 
-    abstract T call(Object... params) throws Exception;
+    abstract public T call(Object... params) throws Exception;
 
     /**
      * Set timeout for the Deferrables. If a asnc task takes longer than the specified time, the promise is rejected
