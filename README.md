@@ -1,5 +1,5 @@
-#SJPromise
-the Simple Java Promise library for easily chaining async operations.
+#Simple Java Promises
+a library for easily chaining async operations.
  
 Lets you do things like
 
