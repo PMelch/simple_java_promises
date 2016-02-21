@@ -1,28 +1,19 @@
-#SJPromise
-the Simple Java Promise library for easily chaining async operations.
+#Simple Java Promises
+a library for easily chaining async operations.
  
 Lets you do things like
 
 ```Java
 
-    Promise.when(new Deferrable<String>(){...}, new Deferrable<String>(){...})
-        .then(new Deferrable<String>(){...})
-        .resolve(new Result<Object[]>() {
-             public void accept(Object[] objects) {
-                // receive the results of the previously called Deferrables.  
-                System.out.println(objects.length);
-             }})
-        .reject(new Result<Throwable>() {
-            public void accept(Throwable throwable) {
-                // catch any error that occured within the execution of  
-                System.out.println("ERROR: "+throwable.getMessage());
-            }
-        });
+    Promise.when(asyncCall1, blockingCall)
+        .then(asyncCall2.retries(3))
+        .resolve(resolveCallback)
+        .reject(rejectCallback);
         
 
 ```
 
-Each Deferrable can resolve its status by returning a value or reject it by throwing an exception. Values get passed to any chained promises as parameters.
+Each Call can resolve its status by calling resolve(value) or reject it by calling reject(Throwable). Values get passed to any chained promises as parameters.
 
 What SJPromise is:
 * a simple way to use Javascript Promise-like syntax to chain async tasks
@@ -41,8 +32,8 @@ What SJPromise is NOT:
 
 ```Java
 
-    Promise.when(deferrable)
-        .then(nextDeferrable)
+    Promise.when(call1)
+        .then(call1)
         .resolve(new Result<Object[]>() {
              public void accept(Object[] objects) {
              }})
@@ -54,17 +45,19 @@ What SJPromise is NOT:
 
 ```
 
+A call can either be an AsyncCall which is assumed to perform it's call method in an async way already, or a BlockingCall which will be passed to the set Executor to be performed asynchronously. 
+
 ### Processing Return values / parameters
 
 Each stage in the promise chain gets passed the returned values of the previous stage.
 
 ```Java
-        Promise.when(new Deferrable<String>(){
+        Promise.when(new BlockingCall<String>(){
             public String call(Object... params) throws Exception {
                 // read web page content
                 return loadWebPage("http://www.google.com");
             }})
-        .then(new Deferrable<Integer>(){
+        .then(new BlockingCall<Integer>(){
             public Integer call(Object... params) throws Exception {
                 // do operatino on passed String
                 return countSomething((String)params[0]);
@@ -81,11 +74,11 @@ Each stage in the promise chain gets passed the returned values of the previous 
         });
 ```
 
-When a stage has more then one Deferrable to process, all parameters are passed to each Deferrable in the next stage.
+When a stage has more then one Call to process, all resolved values are passed to each Call in the next stage.
 ```Java
-        Promise.when(new WebPageLoadingDeferrable("http://www.example.com"), 
-                     new WebPageLoadingDeferrable("http://www.google.com"))
-        .then(new Deferrable<Integer>(){
+        Promise.when(new WebPageLoadingCall("http://www.example.com"), 
+                     new WebPageLoadingCall("http://www.google.com"))
+        .then(new BlockingCall<Integer>(){
             public Integer call(Object... params) throws Exception {
                 // do operatino on passed String
                 return findCommonWords((String)params[0], (String)params[1]);
