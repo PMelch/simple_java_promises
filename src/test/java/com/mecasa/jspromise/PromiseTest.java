@@ -3,6 +3,7 @@ package com.mecasa.jspromise;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
+import org.mockito.ArgumentCaptor;
 
 import java.net.URL;
 import java.util.Scanner;
@@ -11,6 +12,8 @@ import java.util.concurrent.*;
 import static junit.framework.Assert.fail;
 import static junit.framework.TestCase.assertEquals;
 import static org.junit.Assert.assertTrue;
+import static org.mockito.Matchers.any;
+import static org.mockito.Mockito.*;
 
 /**
  * User: peter
@@ -21,8 +24,8 @@ public class PromiseTest {
 
     @Before
     public void setUp() throws Exception {
-        Promise.setExecutorServiceProvider(new Promise.ExecutorServiceProvider() {
-            public ExecutorService getExecutorService() {
+        Promise.setExecutorProvider(new Promise.ExecutorProvider() {
+            public ExecutorService getExecutor() {
                 return Executors.newFixedThreadPool(4);
             }
         });
@@ -36,13 +39,13 @@ public class PromiseTest {
 
     @Test
     public void testCallParameters() throws Exception {
-        Deferrable<String> deferrable = new Deferrable<String>() {
-            public String call(Object... params) throws Exception {
-                return "Hello";
+        BlockingCall<String> asyncCall = new BlockingCall<String>() {
+            public void call(Object... params) throws Exception {
+                resolve("Hello");
             }
         };
 
-        Promise.when(deferrable)
+        Promise.when(asyncCall)
                 .resolve(new Result<Object[]>() {
                     public void accept(Object[] objects) {
                         assertEquals(1, objects.length);
@@ -60,70 +63,75 @@ public class PromiseTest {
 
     @Test
     public void testPromiseCompletion() throws Exception {
-        Deferrable<String> deferrable = new Deferrable<String>() {
-            public String call(Object... params) throws Exception {
+        BlockingCall<String> asyncCall = new BlockingCall<String>() {
+            public void call(Object... params) throws Exception {
                 Thread.sleep(100);
-                return "Hello";
+
+                resolve("Hello");
             }
         };
         long ct1 = System.currentTimeMillis();
-        Promise.when(deferrable).waitForCompletion();
+        Promise.when(asyncCall)
+                .waitForCompletion();
         long ct2 = System.currentTimeMillis();
         final long diff = ct2 - ct1;
-        System.out.println("DIff: "+diff);
         assertTrue(diff >= 100);
     }
 
 
     @Test
     public void testPromiseMultiCompletion() throws Exception {
+
+        Result resultCallback = mock(Result.class);
+
         long ct1 = System.currentTimeMillis();
-
-        Promise.when(new Deferrable<String>() {
-            public String call(Object... params) throws Exception {
+        Promise.when(new BlockingCall() {
+            public void call(Object... params) throws Exception {
                 Thread.sleep(100);
-                return "Hello";
+                resolve("Hello");
             }
-        }, new Deferrable<String>() {
-            public String call(Object... params) throws Exception {
+        }, new BlockingCall<String>() {
+            public void call(Object... params) throws Exception {
                 Thread.sleep(200);
-                return "World";
+                resolve("World");
             }
-        }).resolve(new Result<Object[]>() {
-            public void accept(Object[] objects) {
-                assertEquals(2, objects.length);
-                assertEquals("Hello", objects[0]);
-                assertEquals("World", objects[1]);
-
-            }
-        }).reject(new Result<Throwable>() {
+        }).resolve(resultCallback)
+          .reject(new Result<Throwable>() {
             public void accept(Throwable throwable) {
                 fail();
             }
-        });
+        }).waitForCompletion();
 
 
         long ct2 = System.currentTimeMillis();
         long diff = ct2 - ct1;
-        System.out.println("200+100 => " + diff);
         assertTrue(diff >= 200);
-        assertTrue(diff <= 250);
+        assertTrue(diff <= 220);
 
+        ArgumentCaptor<Object[]> argumentCaptor = ArgumentCaptor.forClass(Object[].class);
+        verify(resultCallback).accept(argumentCaptor.capture());
+
+        Object[] value = argumentCaptor.getValue();
+        assertEquals(2, value.length);
+        assertEquals("Hello", value[0]);
+        assertEquals("World", value[1]);
     }
 
     @Test
     public void testParallelExecution() throws Exception {
         long ct1 = System.currentTimeMillis();
 
-        Promise.when(new Deferrable<String>() {
-            public String call(Object... params) throws Exception {
+        Promise.when(new BlockingCall<String>() {
+            @Override
+            protected void call(Object... params) throws Throwable {
                 Thread.sleep(100);
-                return "Hello";
+                resolve("Hello");
             }
-        }, new Deferrable<String>() {
-            public String call(Object... params) throws Exception {
+        }, new BlockingCall<String>() {
+            @Override
+            protected void call(Object... params) throws Throwable {
                 Thread.sleep(100);
-                return "World";
+                resolve("World");
             }
         }).waitForCompletion();
 
@@ -137,16 +145,16 @@ public class PromiseTest {
     public void testPromiseCompletionChain() throws Exception {
         long ct1 = System.currentTimeMillis();
 
-        Promise.when(new Deferrable<String>() {
-            public String call(Object... params) throws Exception {
+        Promise.when(new AsyncCall<String>() {
+            public void call(Object... params) throws Exception {
                 Thread.sleep(100);
-                return "Hello";
+                resolve("Hello");
             }
-        }).then(new Deferrable<String>() {
+        }).then(new AsyncCall<String>() {
 
-            public String call(Object... params) throws Exception {
+            public void call(Object... params) throws Exception {
                 Thread.sleep(100);
-                return "World";
+                resolve("World");
             }
         }).waitForCompletion();
 
@@ -157,59 +165,35 @@ public class PromiseTest {
 
     @Test
     public void testError() throws Exception {
-        Promise.when(new Deferrable<String>() {
-            public String call(Object... params) throws Exception {
-                throw new IllegalArgumentException("Error");
+        Result<Throwable> errorHandler = mock(Result.class);
+        Promise.when(new AsyncCall<String>() {
+            public void call(Object... params) throws Exception {
+                reject(new IllegalArgumentException("Error"));
             }
         })
-        .then(new Deferrable<String>() {
-            public String call(Object... params) throws Exception {
-                fail();
-                return null;
-            }
-        })
-        .resolve(new Result<Object[]>() {
-            public void accept(Object[] objects) {
-                fail();
-            }
-        })
-        .reject(new Result<Throwable>() {
-                    public void accept(Throwable throwable) {
-                        System.out.println(throwable.getMessage());
+                .then(new AsyncCall<String>() {
+                    public void call(Object... params) throws Exception {
+                        fail();
+                        resolve(null);
                     }
-                });
-    }
-
-    @Test
-    public void testErrorWithoutRecall() throws Exception {
-        Promise.when(new Deferrable<String>() {
-            int callCount = 0;
-            public String call(Object... params) throws Exception {
-                ++callCount;
-                assertTrue(callCount == 1);
-                throw new IllegalArgumentException("Error");
-            }
-        })
-        .resolve(new Result<Object[]>() {
+                })
+                .resolve(new Result<Object[]>() {
                     public void accept(Object[] objects) {
                         fail();
                     }
                 })
-        .reject(new Result<Throwable>() {
-            public void accept(Throwable throwable) {
-                System.out.println(throwable.getMessage());
-            }
-        })
-        .waitForCompletion();
+                .reject(errorHandler);
+
+        verify(errorHandler).accept(any(Exception.class));
     }
 
 
 
     @Test
     public void testResolve() throws Exception {
-        Promise.when(new Deferrable<String>() {
-            public String call(Object... params) throws Exception {
-                return "Foo";
+        Promise.when(new AsyncCall<String>() {
+            public void call(Object... params) throws Exception {
+                resolve("Foo");
             }
         }).resolve(new Result<Object[]>() {
             public void accept(Object[] objects) {
@@ -221,100 +205,57 @@ public class PromiseTest {
 
     @Test
     public void testWebAccess() throws Exception {
-        Promise.when(new Deferrable<String>() {
-            public String call(Object... params) throws Exception {
-                return new Scanner(new URL("http://www.google.com").openStream(), "UTF-8").useDelimiter("\\A").next();
+        Result<Throwable> errorHandler = mock(Result.class);
+        Result<Object[]> resultHandler = mock(Result.class);
+        Promise.when(new BlockingCall() {
+            public void call(Object... params) throws Exception {
+                resolve(new Scanner(new URL("http://www.google.com").openStream(), "UTF-8").useDelimiter("\\A").next());
             }
-        }, new Deferrable<String>() {
-            public String call(Object... params) throws Exception {
-                return new Scanner(new URL("http://www.example.com").openStream(), "UTF-8").useDelimiter("\\A").next();
+        }, new BlockingCall<String>() {
+            public void call(Object... params) throws Exception {
+                resolve(new Scanner(new URL("http://www.example.com").openStream(), "UTF-8").useDelimiter("\\A").next());
             }
-        }).resolve(new Result<Object[]>() {
-            public void accept(Object[] objects) {
-                for (Object o : objects) {
-                    System.out.println(((String) o).length());
-                }
-                System.out.println("done");
-            }
-        }).reject(new Result<Throwable>() {
-            public void accept(Throwable throwable) {
-                System.out.println("ERROR: " + throwable.getMessage());
-            }
-        });
+        }).resolve(resultHandler).reject(errorHandler).waitForCompletion();
+
+        ArgumentCaptor<Object[]> argumentCaptor = ArgumentCaptor.forClass(Object[].class);
+
+        verify(resultHandler).accept(argumentCaptor.capture());
+        verify(errorHandler, never()).accept(any(Throwable.class));
+
+        Object[] values = argumentCaptor.getValue();
+        assertEquals(2, values.length);
+        assertTrue(((String)values[0]).length()>0);
+        assertTrue(((String)values[1]).length()>0);
     }
 
-    @Test
-    public void testRetry() throws Exception {
-        Deferrable<String> failingDeferrable = new Deferrable<String>() {
-            private int tryNum = 0;
 
-            public String call(Object... params) throws Exception {
-                if (tryNum++ < 3) {
-                    throw new IllegalAccessError();
-                }
-                return "Foo";
-            }
-        };
-
-
-        Promise.when(failingDeferrable)
-                .retriesWithDelay(3, 100)
-                .reject(new Result<Throwable>() {
-                    public void accept(Throwable throwable) {
-                        fail();
-                    }
-                })
-                .resolve(new Result<Object[]>() {
-                    public void accept(Object[] objects) {
-                        assertEquals(1, objects.length);
-                        assertEquals("Foo", objects[0]);
-                    }
-                });
-
-
-        long ct1 = System.currentTimeMillis();
-        Promise.when(failingDeferrable)
-                .retriesWithDelay(3, 100)
-                .reject(new Result<Throwable>() {
-                    public void accept(Throwable throwable) {
-                        fail();
-                    }
-                })
-                .resolve(new Result<Object[]>() {
-                    public void accept(Object[] objects) {
-                        assertEquals(1, objects.length);
-                        assertEquals("Foo", objects[0]);
-                    }
-                });
-        long ct2 = System.currentTimeMillis();
-        // make sure the working Deferrable has not been re-run
-        assertTrue(ct2-ct1 < 100);
-    }
     @Test
     public void testRetryPerDeferrable() throws Exception {
-        Deferrable<String> retryDeferrable = new Deferrable<String>() {
+        BlockingCall<String> retryAsyncCall = new BlockingCall<String>() {
             private int tryNum = 0;
 
-            public String call(Object... params) throws Exception {
+            public void call(Object... params) throws Exception {
+                Thread.sleep(100);
                 if (tryNum++ < 3) {
-                    throw new IllegalAccessError();
+                    reject(new IllegalAccessError());
                 }
-                return "Foo";
+                resolve("Foo");
             }
         };
 
-        Deferrable<String> delayedDeferrable = new Deferrable<String>() {
+        BlockingCall<String> delayedAsyncCall = new BlockingCall<String>() {
             @Override
-            public String call(Object... params) throws Exception {
+            public void call(Object... params) throws Exception {
                 Thread.sleep(1000);
-                return "Bar";
+                resolve("Bar");
             }
         };
 
         long ct1 = System.currentTimeMillis();
-        Promise.when(delayedDeferrable, retryDeferrable.retriesWithDelay(3, 100))
+        Promise.when(delayedAsyncCall, retryAsyncCall.retriesWithDelay(3, 100))
                 .reject(new Result<Throwable>() {
-                    public void accept(Throwable throwable) {
+                    @Override
+                    public void accept(Throwable e) {
                         fail();
                     }
                 })
@@ -324,19 +265,19 @@ public class PromiseTest {
                         assertEquals("Foo", objects[1]);
                         assertEquals("Bar", objects[0]);
                     }
-                });
+                }).waitForCompletion();
         long ct2 = System.currentTimeMillis();
         long diff = ct2 - ct1;
 
         // make sure that only the first deferrable was re-run after failing.
         // the second one ( the one with the long delay ) was only run once
-        assertTrue(diff < 1400);
+        assertTrue(diff < 1050);
     }
 
 
     @Test
     public void testParameters() throws Exception {
-        // empty Deferrable list is illegal, so expect an Exception
+        // empty AsyncCall list is illegal, so expect an Exception
         try {
             Promise.when().waitForCompletion();
             fail();
@@ -352,213 +293,77 @@ public class PromiseTest {
 
     @Test
     public void testThreadChaining() throws Exception {
-        Deferrable<String> deferrable = new AsyncDeferrable<String>() {
-            public String call(Object... params) throws Exception {
-                final Thread deferrable = createThread(new Runnable() {
-                    public void run() {
-                        try {
-                            Thread.sleep(100);
-                        } catch (InterruptedException ignored) {
-                        }
-                        synchronized (getSyncObject()) {
-                            getSyncObject().notify();
-                        }
-                    }
-                });
-                deferrable.start();
-
-                System.out.println("waiting for thread to finish");
-                synchronized (getSyncObject()) {
-                    getSyncObject().wait();
-                }
-                System.out.println("done");
-
-                rejectIfError();
-                return "Foo";
+        BlockingCall<String> blockingCall = new BlockingCall<String>() {
+            @Override
+            protected void call(Object... params) throws Throwable {
+                Thread.sleep(100);
+                resolve("Foo");
             }
         };
 
 
+        long ct1 = System.currentTimeMillis();
         Promise
-                .when(deferrable)
-                .then(deferrable)
+                .when(blockingCall)
+                .then(blockingCall)
                 .waitForCompletion();
-
+        long ct2 = System.currentTimeMillis();
+        assertTrue(ct2-ct1>200);
+        assertTrue(ct2-ct1<250);
     }
 
-    private static abstract class AsyncDeferrable<T> extends Deferrable<T> implements Thread.UncaughtExceptionHandler{
-        private Throwable _rejectReason;
-        private final Object _syncObject = new Object();
-
-        public void uncaughtException(Thread t, Throwable e) {
-            _rejectReason = e;
-            synchronized (_syncObject) {
-                _syncObject.notify();
-            }
-        }
-
-        protected Thread createThread(Runnable runnable) {
-            Thread thread = new Thread(runnable);
-            thread.setUncaughtExceptionHandler(this);
-            return thread;
-        }
-
-        final protected Object getSyncObject() {
-            return _syncObject;
-        }
-
-        final protected void rejectIfError() throws Exception {
-            if (_rejectReason instanceof Exception) {
-                throw (Exception)_rejectReason;
-            }
-
-            throw new Exception(_rejectReason.getMessage());
-        }
-    }
 
 
     @Test
     public void testThreadError() throws Exception {
-        Deferrable<String> deferrable = new AsyncDeferrable<String>() {
-            public String call(Object... params) throws Exception {
-                final Thread deferredThread = createThread(new Runnable() {
-                    public void run() {
-                        try {
-                            Thread.sleep(100);
-                        } catch (InterruptedException e) {
-                        }
-                        throw new IllegalArgumentException("error");
-                    }
-                });
 
-                deferredThread.start();
-
-                System.out.println("waiting for thread to finish");
-                synchronized (getSyncObject()) {
-                    getSyncObject().wait();
-                }
-                // in case there was an error, reject the deferrable
-                System.out.println("done");
-
-                rejectIfError();
-                return "Foo";
+        BlockingCall<String> blockingCall = new BlockingCall<String>() {
+            @Override
+            protected void call(Object... params) throws Throwable {
+                Thread.sleep(100);
+                reject(new IllegalArgumentException("error"));
             }
         };
 
-
-        Promise
-                .when(deferrable)
-                .reject(new Result<Throwable>() {
-                    public void accept(Throwable throwable) {
-                        // success
-                        System.out.println("Error: "+throwable.getMessage());
-                    }
-                }).resolve(new Result<Object[]>() {
-                    public void accept(Object[] objects) {
-                        fail();
-                    }
-                });
-
-    }
-
-    @Test
-    public void testTimeout() throws Exception {
-        Deferrable deferrable = new Deferrable() {
-            public Object call(Object... params) throws Exception {
-                Thread.sleep(1000);
-                return "Foo";
+        final Result<Throwable> errorHandler = spy(new Result<Throwable>() {
+            public void accept(Throwable throwable) {
             }
-        };
-
-        // test with timeout set for a promise stage
-
-        Promise.when(deferrable).timeout(100)
-                .reject(new Result<Throwable>() {
-                    public void accept(Throwable throwable) {
-                        // we should receive the TimeoutException
-                        if (!(throwable instanceof TimeoutException)) {
-                            fail();
-                        }
-                    }
-                }).resolve(new Result<Object[]>() {
-                     public void accept(Object[] objects) {
-                        fail();
-                    }
-                });
-
-
-
-        long cp1 = System.currentTimeMillis();
-        Promise.when(deferrable).timeout(100)
-                .retries(2)
-                .waitForCompletion();
-        long cp2 = System.currentTimeMillis();
-        long diff = cp2 - cp1;
-        System.out.println("diff: "+diff);
-
-        // make sure the executor shut down the timed out Futures.
-        assertTrue(diff < 400);
-
-
-        // test timeout set for a single Deferrable
-
-        Promise.when(deferrable.timeout(100))
-                .reject(new Result<Throwable>() {
-                    public void accept(Throwable throwable) {
-                        // we should receive the TimeoutException
-                        if (!(throwable instanceof TimeoutException)) {
-                            fail();
-                        }
-                    }
-                }).resolve(new Result<Object[]>() {
+        });
+        final Result<Object[]> resultHandler = spy(new Result<Object[]>() {
             public void accept(Object[] objects) {
-                fail();
             }
         });
 
-        cp1 = System.currentTimeMillis();
-        Promise.when(deferrable.timeout(100))
-                .retries(2)
-                .waitForCompletion();
-        cp2 = System.currentTimeMillis();
-        diff = cp2 - cp1;
-        System.out.println("diff: "+diff);
+        Promise.when(blockingCall)
+               .reject(errorHandler)
+               .resolve(resultHandler)
+               .waitForCompletion();
 
-        // make sure the executor shut down the timed out Futures.
-        assertTrue(diff < 400);
-
-
-
-        // retry on Deferrable
-        cp1 = System.currentTimeMillis();
-        Promise.when(deferrable.timeout(100).retries(2))
-                .waitForCompletion();
-        cp2 = System.currentTimeMillis();
-        diff = cp2 - cp1;
-        System.out.println("diff: "+diff);
-
-        // make sure the executor shut down the timed out Futures.
-        assertTrue(diff < 400);
+        verify(errorHandler).accept(any(IllegalArgumentException.class));
+        verify(resultHandler, never()).accept(any(Object[].class));
 
     }
+
 
     @Test
     public void testValidNullResult() throws Exception {
-        Promise.when(new Deferrable<String>() {
+        Result resolveCallback = mock(Result.class);
+        Result rejectCallback = mock(Result.class);
+
+        Promise.when(new AsyncCall<String>() {
             @Override
-            public String call(Object... params) throws Exception {
-                return null;
+            public void call(Object... params) throws Exception {
+                resolve(null);
             }
-        }).resolve(new Result<Object[]>() {
-            public void accept(Object[] objects) {
-                assertEquals(1, objects.length);
-                assertEquals(null, objects[0]);
-            }
-        }).reject(new Result<Throwable>() {
-            public void accept(Throwable throwable) {
-                fail();
-            }
-        });
+        }).resolve(resolveCallback)
+          .reject(rejectCallback);
+
+        ArgumentCaptor<Object[]> captor = ArgumentCaptor.forClass(Object[].class);
+        verify(resolveCallback).accept(captor.capture());
+        Object[] objects = captor.getValue();
+        assertEquals(1, objects.length);
+        assertEquals(null, objects[0]);
+
     }
 
 
@@ -567,53 +372,148 @@ public class PromiseTest {
         // we create a promise that should pass through the values to each stage. only the
         // last stage should return only one value to the resolve call.
 
-        Promise.when(new Deferrable<Integer>() {
+
+        final AsyncCall<Integer> asyncCall1 = spy(new AsyncCall<Integer>() {
             @Override
-            public Integer call(Object... params) throws Exception {
-                return 10;
-            }
-        }).setExecutor( new BlockingTestExecutor())
-          .passResultsThrough(true)
-          .then(new Deferrable<Integer>() {
-            @Override
-            public Integer call(Object... params) throws Exception {
-                assertEquals(1, params.length);
-                return ((Integer)params[0]) + 20;
-            }
-        }).then(new Deferrable<Integer>() {
-            @Override
-            public Integer call(Object... params) throws Exception {
-                assertEquals(2, params.length);
-                return ((Integer)params[0]) + ((Integer)params[1]) + 30;
-            }
-        }).passResultsThrough(false)    // collapse to one result
-          .resolve(new Result<Object[]>() {
-            public void accept(Object[] objects) {
-                assertEquals(1, objects.length);
-                assertEquals(70, objects[0]);
+            public void call(Object... params) throws Exception {
+                resolve(((Integer) params[0]) + 20);
             }
         });
 
+
+        final AsyncCall<Integer> asyncCall2 = spy(new AsyncCall<Integer>() {
+            @Override
+            public void call(Object... params) throws Exception {
+                resolve(((Integer) params[0]) + 30);
+            }
+        });
+
+        final Result<Object[]> resultHandler = spy(new Result<Object[]>() {
+            public void accept(Object[] objects) {
+            }
+        });
+
+        Promise.when(new AsyncCall<Integer>() {
+            @Override
+            public void call(Object... params) throws Exception {
+                resolve(10);
+            }
+        })
+          .then(asyncCall1)
+          .then(asyncCall2)
+          .resolve(resultHandler)
+          .reject(new Result<Throwable>() {
+              @Override
+              public void accept(Throwable throwable) {
+                  throwable.printStackTrace();
+              }
+          });
+
+        ArgumentCaptor<Object> argumentCaptor1 = ArgumentCaptor.forClass(Object.class);
+        ArgumentCaptor<Object> argumentCaptor2 = ArgumentCaptor.forClass(Object.class);
+        ArgumentCaptor<Object[]> argumentCaptor3 = ArgumentCaptor.forClass(Object[].class);
+        try {
+            verify(asyncCall1).call(argumentCaptor1.capture());
+        } catch (Throwable throwable) {
+            throwable.printStackTrace();
+        }
+
+        Object values1 = argumentCaptor1.getValue();
+        assertEquals(10, values1);
+
+        try {
+            verify(asyncCall2).call(argumentCaptor2.capture());
+        } catch (Throwable throwable) {
+            throwable.printStackTrace();
+        }
+
+        Object values2 = argumentCaptor2.getValue();
+        assertEquals(30, values2);
+
+        verify(resultHandler).accept(argumentCaptor3.capture());
+
+        Object[] values3 = argumentCaptor3.getValue();
+        assertEquals(1, values3.length);
+        assertEquals(60, values3[0]);
     }
 
 
     @Test
     public void testAsyncness() throws Exception {
+
+        Result resultCallback = mock(Result.class);
+
         long ct1 = System.currentTimeMillis();
 
-        Promise.when(new Deferrable<String>() {
-            @Override
-            public String call(Object... params) throws Exception {
-                Thread.sleep(100);
-                return null;
+        Promise promise = Promise.when(BlockingCall.wrap(new Runnable() {
+            public void run() {
+                try {
+                    Thread.sleep(100);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
             }
-        }).resolve(new Result<Object[]>() {
-            public void accept(Object[] objects) {
-            }
-        });
+        })).resolve(resultCallback);
 
         long ct2 = System.currentTimeMillis();
+        // make sure the promise code was executed in less than 100ms => so the sleep was executed in another thread.
         assertTrue(ct2-ct1<100);
 
+        promise.waitForCompletion();
+        verify(resultCallback).accept(any());
+    }
+
+    @Test
+    public void testFulfilledOnResolve() throws Exception {
+        Runnable fulfilledRunnable = mock(Runnable.class);
+        Promise.when(new BlockingCall<Integer>() {
+            @Override
+            protected void call(Object... params) throws Throwable {
+                resolve(10);
+            }
+        }).fulfilled(fulfilledRunnable).waitForCompletion();
+
+        verify(fulfilledRunnable).run();
+    }
+
+    @Test
+    public void testFulfilledOnRejected() throws Exception {
+        Runnable fulfilledRunnable = mock(Runnable.class);
+
+        Promise.when(new BlockingCall<Integer>() {
+            @Override
+            protected void call(Object... params) throws Throwable {
+                reject(new IllegalArgumentException());
+            }
+        }).fulfilled(fulfilledRunnable).waitForCompletion();
+
+        verify(fulfilledRunnable).run();
+    }
+
+    @Test
+    public void testInitWithExecutor() throws Exception {
+        Executor executor = mock(Executor.class);
+        Promise.when(executor, BlockingCall.wrap(mock(Runnable.class)));
+        verify(executor).execute(any(Runnable.class));
+    }
+
+    @Test
+    public void testTimerCallback() throws Exception {
+        Result result = mock(Result.class);
+        Promise.when(new AsyncCall() {
+            @Override
+            protected void call(Object... params) throws Throwable {
+                ScheduledExecutorService service = Executors
+                        .newSingleThreadScheduledExecutor();
+                service.schedule(new Runnable() {
+                    @Override
+                    public void run() {
+                        resolve(null);
+                    }
+                }, 1, TimeUnit.SECONDS);
+            }
+        }).resolve(result).waitForCompletion();
+
+        verify(result).accept(any());
     }
 }
