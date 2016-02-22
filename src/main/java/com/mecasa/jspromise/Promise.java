@@ -27,7 +27,6 @@ public class Promise {
 
 
     private final Vector<Object> _values = new Vector<Object>();
-    private Object[] _params = null;
     private Executor _executor;
     private static ExecutorProvider sExecutorProvider = new ExecutorProvider() {
         public ExecutorService getExecutor() {
@@ -36,9 +35,9 @@ public class Promise {
     };
 
     private Boolean _fulfilled = false;
-    private boolean _passValues = false;
-    private boolean _rejected;
-    private boolean _resolved;
+    private boolean _rejected = false;
+    private boolean _resolved = false;
+    private boolean _started = false;
 
 
     private Promise(Call... tasks) {
@@ -73,16 +72,17 @@ public class Promise {
     }
 
     public static Promise when(Call... tasks) {
-        return when(null, tasks);
+        return when(true, tasks);
     }
 
-    public static Promise when(Executor executor, Call... tasks) {
+    public static Promise when(boolean startImmediately, Call... tasks) {
         if (tasks == null || tasks.length == 0) {
             throw new IllegalArgumentException("empty task list not allowed");
         }
         final Promise promise = new Promise(tasks);
-        promise.setExecutor(executor);
-        promise.start();
+        if (startImmediately) {
+            promise.start();
+        }
         return promise;
     }
 
@@ -122,12 +122,12 @@ public class Promise {
     }
 
     private void runStage() {
-        _params = _values.toArray(new Object[_values.size()]);
+        Object[] params = _values.toArray(new Object[_values.size()]);
         _values.setSize(_tasks.length);
         for (final Call task : _tasks) {
             task.setPromise(this);
             task.prepare();
-            task.triggerCall(_params);
+            task.triggerCall(params);
         }
     }
 
@@ -176,6 +176,7 @@ public class Promise {
     }
 
     public Promise start() {
+        _started = true;
         runStage();
         return this;
     }
@@ -223,6 +224,10 @@ public class Promise {
      * This terminates the Promise chain.
      */
     public void waitForCompletion() {
+        if (!_started) {
+            throw new IllegalStateException("Promise not started yet. Call start() before waitForCompletion().");
+        }
+
         synchronized (_fulfilled) {
             if (_fulfilled) {
                 return;
@@ -255,33 +260,4 @@ public class Promise {
         _executor = executor;
         return this;
     }
-
-
-    /**
-     * By default each stage of execution gets passed the return value(s) of the previous stage. By calling
-     * passResultsThrough(true), each following stage gets called with a list of all results of all previous stages.
-     * <p>
-     * So in this scenario
-     * <pre>
-     *     Promise.when(calcValue1).passResultsThrough(true)
-     *            .then(calcValue2)
-     *            .then(calcValue3)
-     *            .resolve(resultCallback);
-     * </pre>
-     * calcValue2 will be called with the result generated from calcValue1, calcValue3 will be called with both the results
-     * of calcValue1 and calcValue2 and the resultCallback will be called with an Object[] list containing the results
-     * of calcValue1, calcValue2 and calcValue3.
-     * <p/>
-     * if the call to passResultsThrough was omitted the resultCallback would have been called with the result of calcValue3 alone.
-     * </p>
-     *
-     * @param passThrough
-     * @return
-     */
-    public Promise passResultsThrough(boolean passThrough) {
-        _passValues = passThrough;
-        return this;
-    }
-
-
 }

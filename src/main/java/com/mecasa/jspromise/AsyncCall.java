@@ -17,6 +17,4 @@ public abstract class AsyncCall<T> extends Call<T, AsyncCall<T>> {
             reject(e);
         }
     }
-
-    protected abstract void call(Object... params) throws Throwable;
 }

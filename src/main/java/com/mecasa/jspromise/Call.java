@@ -18,6 +18,8 @@ public abstract class Call<T,C extends Call> {
         _params = params;
     }
 
+    protected abstract void call(Object... params) throws Throwable;
+
     public C retriesWithDelay(int numRetries, int delay) {
         _retries = numRetries;
         _retryDelay = delay;

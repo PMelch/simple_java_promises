@@ -82,10 +82,10 @@ public class PromiseTest {
     @Test
     public void testPromiseMultiCompletion() throws Exception {
 
-        Result resultCallback = mock(Result.class);
+        Result<Object[]> resultCallback = mockResultCallback();
 
         long ct1 = System.currentTimeMillis();
-        Promise.when(new BlockingCall() {
+        Promise.when(new BlockingCall<String>() {
             public void call(Object... params) throws Exception {
                 Thread.sleep(100);
                 resolve("Hello");
@@ -165,7 +165,7 @@ public class PromiseTest {
 
     @Test
     public void testError() throws Exception {
-        Result<Throwable> errorHandler = mock(Result.class);
+        Result<Throwable> errorHandler = mockRejectCallback();
         Promise.when(new AsyncCall<String>() {
             public void call(Object... params) throws Exception {
                 reject(new IllegalArgumentException("Error"));
@@ -205,9 +205,10 @@ public class PromiseTest {
 
     @Test
     public void testWebAccess() throws Exception {
-        Result<Throwable> errorHandler = mock(Result.class);
-        Result<Object[]> resultHandler = mock(Result.class);
-        Promise.when(new BlockingCall() {
+        Result<Throwable> errorHandler = mockRejectCallback();
+        Result<Object[]> resultHandler = mockResultCallback();
+
+        Promise.when(new BlockingCall<String>() {
             public void call(Object... params) throws Exception {
                 resolve(new Scanner(new URL("http://www.google.com").openStream(), "UTF-8").useDelimiter("\\A").next());
             }
@@ -254,7 +255,6 @@ public class PromiseTest {
         long ct1 = System.currentTimeMillis();
         Promise.when(delayedAsyncCall, retryAsyncCall.retriesWithDelay(3, 100))
                 .reject(new Result<Throwable>() {
-                    @Override
                     public void accept(Throwable e) {
                         fail();
                     }
@@ -282,12 +282,6 @@ public class PromiseTest {
             Promise.when().waitForCompletion();
             fail();
         } catch (IllegalArgumentException ignored) {
-        }
-
-        try {
-            Promise.when(null).waitForCompletion();
-            fail();
-        } catch (IllegalArgumentException e) {
         }
     }
 
@@ -347,8 +341,8 @@ public class PromiseTest {
 
     @Test
     public void testValidNullResult() throws Exception {
-        Result resolveCallback = mock(Result.class);
-        Result rejectCallback = mock(Result.class);
+        Result<Object[]> resolveCallback = mockResultCallback();
+        Result<Throwable> rejectCallback = mockRejectCallback();
 
         Promise.when(new AsyncCall<String>() {
             @Override
@@ -365,6 +359,7 @@ public class PromiseTest {
         assertEquals(null, objects[0]);
 
     }
+
 
 
     @Test
@@ -403,7 +398,6 @@ public class PromiseTest {
           .then(asyncCall2)
           .resolve(resultHandler)
           .reject(new Result<Throwable>() {
-              @Override
               public void accept(Throwable throwable) {
                   throwable.printStackTrace();
               }
@@ -439,9 +433,9 @@ public class PromiseTest {
 
 
     @Test
-    public void testAsyncness() throws Exception {
+    public void testAsyncBehaviour() throws Exception {
 
-        Result resultCallback = mock(Result.class);
+        Result<Object[]> resultCallback = mockResultCallback();
 
         long ct1 = System.currentTimeMillis();
 
@@ -460,7 +454,7 @@ public class PromiseTest {
         assertTrue(ct2-ct1<100);
 
         promise.waitForCompletion();
-        verify(resultCallback).accept(any());
+        verify(resultCallback).accept(any(Object[].class));
     }
 
     @Test
@@ -493,20 +487,21 @@ public class PromiseTest {
     @Test
     public void testInitWithExecutor() throws Exception {
         Executor executor = mock(Executor.class);
-        Promise.when(executor, BlockingCall.wrap(mock(Runnable.class)));
+        Promise promise = Promise.when(false, BlockingCall.wrap(mock(Runnable.class)));
+        promise.setExecutor(executor);
+        promise.start();
         verify(executor).execute(any(Runnable.class));
     }
 
     @Test
     public void testTimerCallback() throws Exception {
-        Result result = mock(Result.class);
-        Promise.when(new AsyncCall() {
+        Result<Object[]> result = mockResultCallback();
+        Promise.when(new AsyncCall<String>() {
             @Override
             protected void call(Object... params) throws Throwable {
                 ScheduledExecutorService service = Executors
                         .newSingleThreadScheduledExecutor();
                 service.schedule(new Runnable() {
-                    @Override
                     public void run() {
                         resolve(null);
                     }
@@ -514,6 +509,36 @@ public class PromiseTest {
             }
         }).resolve(result).waitForCompletion();
 
-        verify(result).accept(any());
+        verify(result).accept(any(Object[].class));
+    }
+
+    @SuppressWarnings("unchecked")
+    private Result<Object[]> mockResultCallback() {
+        return (Result<Object[]>)mock(Result.class);
+    }
+
+    @SuppressWarnings("unchecked")
+    private Result<Throwable> mockRejectCallback() {
+        return (Result<Throwable>)mock(Result.class);
+    }
+
+    @Test
+    public void testDelayedStart() throws Exception {
+        Runnable runnable = mock(Runnable.class);
+        Promise promise = Promise.when(false, BlockingCall.wrap(runnable));
+        verify(runnable, never()).run();
+
+        try {
+            promise.waitForCompletion();
+            fail();
+        } catch (IllegalStateException e) {
+            // expected exception
+        }
+
+        promise.start();
+        verify(runnable).run();
+
+        // no exceptions should be thrown now.
+        promise.waitForCompletion();
     }
 }

@@ -9,7 +9,6 @@ public abstract class BlockingCall<T> extends Call<T, AsyncCall<T>> {
         super.triggerCall(params);
 
         getPromise().getExecutor().execute(new Runnable(){
-            @Override
             public void run() {
                 try {
                     call(params);
@@ -39,6 +38,4 @@ public abstract class BlockingCall<T> extends Call<T, AsyncCall<T>> {
             }
         };
     }
-
-    protected abstract void call(Object... params) throws Throwable;
 }
