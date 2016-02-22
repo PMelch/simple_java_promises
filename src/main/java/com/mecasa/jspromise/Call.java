@@ -1,15 +1,16 @@
 package com.mecasa.jspromise;
 
 /**
- * Created by pmelc on 19/02/16.
+ * Created by peter on 19/02/16.
+ *
+ * The base class for all other call types.
  */
-public abstract class Call<T,C extends Call> {
+public abstract class Call<T> {
     private Promise _promise;
     private int _retryDelay = -1;
     private int _retries = -1;
     private boolean _rejected;
     private boolean _resolved;
-    private Throwable _rejectedReason;
     private Object[] _params;
     private T _resolvedValue;
 
@@ -20,16 +21,16 @@ public abstract class Call<T,C extends Call> {
 
     protected abstract void call(Object... params) throws Throwable;
 
-    public C retriesWithDelay(int numRetries, int delay) {
+    public Call retriesWithDelay(int numRetries, int delay) {
         _retries = numRetries;
         _retryDelay = delay;
-        return (C)this;
+        return this;
     }
 
-    public C retries(int numRetries) {
+    public Call retries(int numRetries) {
         _retries = numRetries;
         _retryDelay = -1;
-        return (C)this;
+        return this;
     }
 
     public int getRetries() {
@@ -68,7 +69,6 @@ public abstract class Call<T,C extends Call> {
             return;
         }
 
-        _rejectedReason = e;
         _rejected = true;
 
         if (_promise != null) {
@@ -78,7 +78,6 @@ public abstract class Call<T,C extends Call> {
 
     public void prepare() {
         _rejected = _resolved = false;
-        _rejectedReason = null;
     }
 
     protected Promise getPromise() {

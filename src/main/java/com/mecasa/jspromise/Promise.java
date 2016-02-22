@@ -8,6 +8,7 @@ import java.util.LinkedList;
 import java.util.Queue;
 import java.util.Vector;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * User: peter
@@ -18,10 +19,10 @@ public class Promise {
     private Call[] _tasks;
     private Queue<Call[]> _queue = new LinkedList<Call[]>();
     private int _stageComplete;
-    private Object _completionSyncObject = new Object();
+    private final Object _completionSyncObject = new Object();
 
-    private Result _rejectedHandler;
-    private Result _resolvedHandler;
+    private Result<Throwable> _rejectedHandler;
+    private Result<Object[]> _resolvedHandler;
     private Runnable _fulfilledRunnable;
     private Throwable _rejectedReason;
 
@@ -34,7 +35,7 @@ public class Promise {
         }
     };
 
-    private Boolean _fulfilled = false;
+    private final AtomicBoolean _fulfilled = new AtomicBoolean(false);
     private boolean _rejected = false;
     private boolean _resolved = false;
     private boolean _started = false;
@@ -48,22 +49,22 @@ public class Promise {
     /**
      * Schedules a new set of {@link Call}s after the current set have completed their tasks.
      * Each {@link Call#call(Object...)} will get the results of the previous task as parameters.
-     * The order of the parameters correlates with the order of the Deferrables when being passed
-     * to {@link #when(Call[])} or preceding calls to {@link #then(Call[])}.
+     * The order of the parameters correlates with the order of the Calls when being passed
+     * to {@link #when(Call[])} or preceding calls to <i>then</i>.
      *
-     * @param tasks
-     * @return the chained Promise
+     * @param calls a list of {@link Call} instances to trigger.
+     * @return the Promise
      */
-    public Promise then(Call... tasks) {
-        _queue.add(tasks);
+    public Promise then(Call... calls) {
+        _queue.add(calls);
         synchronized (_fulfilled) {
-            if (_fulfilled) {
+            if (_fulfilled.get()) {
                 // we have already a fulfilled stage.
 
                 // if we are already rejected, don't start the next stage
                 if (!_rejected) {
                     // reset the state
-                    _fulfilled = _resolved = false;
+                    _fulfilled.set(_resolved = false);
                     nextStage();
                 }
             }
@@ -102,7 +103,7 @@ public class Promise {
     }
 
     /**
-     * @param rejectedReason
+     * @param rejectedReason the reason why a task failed.
      */
     synchronized
     protected void setRejected(Throwable rejectedReason) {
@@ -147,7 +148,7 @@ public class Promise {
 
     private void setFulfilled() {
         synchronized (_fulfilled) {
-            _fulfilled = true;
+            _fulfilled.set(true);
         }
 
         if (_fulfilledRunnable != null) {
@@ -167,8 +168,8 @@ public class Promise {
         return this;
     }
 
-    public Promise reject(Result<Throwable> resulHandler) {
-        _rejectedHandler = resulHandler;
+    public Promise reject(Result<Throwable> rejectedHandler) {
+        _rejectedHandler = rejectedHandler;
         if (_rejected) {
             _rejectedHandler.accept(_rejectedReason);
         }
@@ -185,7 +186,7 @@ public class Promise {
         synchronized (_fulfilled) {
             _fulfilledRunnable = fulfilledRunnable;
 
-            if (_fulfilled) {
+            if (_fulfilled.get()) {
                 _fulfilledRunnable.run();
             }
         }
@@ -208,19 +209,16 @@ public class Promise {
      * Set the {@link ExecutorProvider} used to retrieve the {@link Executor} to use in case
      * no specific ExecutorService is set with {@link #setExecutor(Executor)}.
      *
-     * @param provider
+     * @param provider the {@link ExecutorProvider} used to fetch the default {@link Executor}
      */
     public static void setExecutorProvider(@NotNull ExecutorProvider provider) {
         sExecutorProvider = provider;
     }
 
 
-    private Promise() {
-    }
-
 
     /**
-     * Triggers any remaining tasks and wait for their compleation.
+     * Triggers any remaining tasks and wait for their completion.
      * This terminates the Promise chain.
      */
     public void waitForCompletion() {
@@ -229,7 +227,7 @@ public class Promise {
         }
 
         synchronized (_fulfilled) {
-            if (_fulfilled) {
+            if (_fulfilled.get()) {
                 return;
             }
         }
@@ -242,7 +240,7 @@ public class Promise {
                 }
             }
             synchronized (_fulfilled) {
-                if (_fulfilled) {
+                if (_fulfilled.get()) {
                     return;
                 }
             }
@@ -251,9 +249,9 @@ public class Promise {
 
 
     /**
-     * Specifies the {@link Executor} for this and all chained Promise.
+     * Specifies the {@link Executor} for this  Promise. This will override any result delivered by the set ExecutorProvider.
      *
-     * @param executor
+     * @param executor the {@link Executor} used for this Promise.
      * @return the chained Promise
      */
     public Promise setExecutor(Executor executor) {

@@ -229,49 +229,95 @@ public class PromiseTest {
         assertTrue(((String)values[1]).length()>0);
     }
 
+    @Test
+    public void testRetryWithSingleCall() throws Exception {
+        BlockingCall<String> failingCall = spy(new BlockingCall<String>() {
+            private int tryNum = 1;
+
+            public void call(Object... params) throws Exception {
+                if (tryNum == 2) {
+                    resolve("Foo");
+                    return;
+                }
+                ++tryNum;
+
+                reject(new IllegalAccessError());
+            }
+        });
+
+
+        Result<Object[]> resultCallback = mockResultCallback();
+        Result<Throwable> rejectCallback = mockRejectCallback();
+
+        Promise.when(failingCall.retries(1))
+                .reject(rejectCallback)
+                .resolve(resultCallback).waitForCompletion();
+
+        verify(rejectCallback, never()).accept(any(Throwable.class));
+        verify(resultCallback).accept(any(Object[].class));
+
+        try {
+            verify(failingCall, times(2)).call();
+        } catch (Throwable throwable) {
+            throwable.printStackTrace();
+            fail();
+        }
+    }
+
 
     @Test
-    public void testRetryPerDeferrable() throws Exception {
-        BlockingCall<String> retryAsyncCall = new BlockingCall<String>() {
-            private int tryNum = 0;
+    public void testRetryWithMultipleCalls() throws Exception {
+        BlockingCall<String> failingCall = spy(new BlockingCall<String>() {
+            private int tryNum = 1;
 
             public void call(Object... params) throws Exception {
-                Thread.sleep(100);
-                if (tryNum++ < 3) {
-                    reject(new IllegalAccessError());
+                if (tryNum == 3) {
+                    resolve("Foo");
+                    return;
                 }
-                resolve("Foo");
-            }
-        };
+                ++tryNum;
 
-        BlockingCall<String> delayedAsyncCall = new BlockingCall<String>() {
+                reject(new IllegalAccessError());
+            }
+        });
+
+
+        BlockingCall<String> succeedingCall = spy(new BlockingCall<String>() {
             @Override
             public void call(Object... params) throws Exception {
-                Thread.sleep(1000);
                 resolve("Bar");
             }
-        };
+        });
 
-        long ct1 = System.currentTimeMillis();
-        Promise.when(delayedAsyncCall, retryAsyncCall.retriesWithDelay(3, 100))
-                .reject(new Result<Throwable>() {
-                    public void accept(Throwable e) {
-                        fail();
-                    }
-                })
-                .resolve(new Result<Object[]>() {
-                    public void accept(Object[] objects) {
-                        assertEquals(2, objects.length);
-                        assertEquals("Foo", objects[1]);
-                        assertEquals("Bar", objects[0]);
-                    }
-                }).waitForCompletion();
-        long ct2 = System.currentTimeMillis();
-        long diff = ct2 - ct1;
+        Result<Object[]> resultCallback = mockResultCallback();
+        Result<Throwable> rejectCallback = mockRejectCallback();
 
-        // make sure that only the first deferrable was re-run after failing.
-        // the second one ( the one with the long delay ) was only run once
-        assertTrue(diff < 1050);
+        Promise.when(succeedingCall, failingCall.retries(10))
+                .reject(rejectCallback)
+                .resolve(resultCallback).waitForCompletion();
+
+        ArgumentCaptor<Object[]> argumentCaptor = ArgumentCaptor.forClass(Object[].class);
+
+        verify(rejectCallback, never()).accept(any(Throwable.class));
+        verify(resultCallback).accept(argumentCaptor.capture());
+
+        try {
+            verify(failingCall, times(3)).call();
+        } catch (Throwable throwable) {
+            throwable.printStackTrace();
+            fail();
+        }
+
+        try {
+            verify(succeedingCall, times(1)).call();
+        } catch (Throwable throwable) {
+            fail();
+        }
+
+        Object[] objects = argumentCaptor.getValue();
+        assertEquals(2, objects.length);
+        assertEquals("Foo", objects[1]);
+        assertEquals("Bar", objects[0]);
     }
 
 
@@ -535,10 +581,9 @@ public class PromiseTest {
             // expected exception
         }
 
-        promise.start();
-        verify(runnable).run();
-
         // no exceptions should be thrown now.
-        promise.waitForCompletion();
+        promise.start().waitForCompletion();
+
+        verify(runnable).run();
     }
 }
