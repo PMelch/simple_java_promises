@@ -116,7 +116,11 @@ public class Promise {
         _rejectedReason = rejectedReason;
 
         if (_rejectedHandler != null) {
-            _rejectedHandler.accept(_rejectedReason);
+            try {
+                _rejectedHandler.accept(_rejectedReason);
+            } catch (Throwable e) {
+                e.printStackTrace();
+            }
         }
 
         setFulfilled();
@@ -138,7 +142,11 @@ public class Promise {
         if (_tasks == null) {
             _resolved = true;
             if (_resolvedHandler != null) {
-                _resolvedHandler.accept(_values.toArray(new Object[_values.size()]));
+                try {
+                    _resolvedHandler.accept(_values.toArray(new Object[_values.size()]));
+                } catch (Throwable e) {
+                    e.printStackTrace();
+                }
             }
             setFulfilled();
         } else {
@@ -163,7 +171,11 @@ public class Promise {
     public Promise resolve(Result<Object[]> resultHandler) {
         _resolvedHandler = resultHandler;
         if (_resolved) {
-            _resolvedHandler.accept(_values.toArray(new Object[_values.size()]));
+            try {
+                _resolvedHandler.accept(_values.toArray(new Object[_values.size()]));
+            } catch (Throwable e) {
+                e.printStackTrace();
+            }
         }
         return this;
     }
@@ -171,7 +183,11 @@ public class Promise {
     public Promise reject(Result<Throwable> rejectedHandler) {
         _rejectedHandler = rejectedHandler;
         if (_rejected) {
-            _rejectedHandler.accept(_rejectedReason);
+            try {
+                _rejectedHandler.accept(_rejectedReason);
+            } catch (Throwable e) {
+                e.printStackTrace();
+            }
         }
         return this;
     }

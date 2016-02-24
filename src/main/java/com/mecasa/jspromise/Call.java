@@ -1,5 +1,9 @@
 package com.mecasa.jspromise;
 
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+
 /**
  * Created by peter on 19/02/16.
  *
@@ -14,6 +18,10 @@ public abstract class Call<T> {
     private Object[] _params;
     private T _resolvedValue;
 
+    // used to schedule retried tasks with a delay
+    private static ScheduledExecutorService service = Executors.newSingleThreadScheduledExecutor();
+    private TimeUnit _retryDelayUnit;
+
     protected void triggerCall(Object... params){
         // save for retries
         _params = params;
@@ -21,9 +29,10 @@ public abstract class Call<T> {
 
     protected abstract void call(Object... params) throws Throwable;
 
-    public Call retriesWithDelay(int numRetries, int delay) {
+    public Call retriesWithDelay(int numRetries, int delay, TimeUnit delayUnit) {
         _retries = numRetries;
         _retryDelay = delay;
+        _retryDelayUnit = delayUnit;
         return this;
     }
 
@@ -31,14 +40,6 @@ public abstract class Call<T> {
         _retries = numRetries;
         _retryDelay = -1;
         return this;
-    }
-
-    public int getRetries() {
-        return _retries;
-    }
-
-    public int getRetryDelay() {
-        return _retryDelay;
     }
 
     protected void setPromise(Promise promise) {
@@ -64,8 +65,20 @@ public abstract class Call<T> {
         }
 
         --_retries;
+        // are retries wanted?
         if (_retries>=0) {
-            triggerCall(_params);
+            // should there be a delay between retries?
+            if (_retryDelay > 0) {
+                // schedule the retry at the specific time.
+                service.schedule(new Runnable() {
+                    public void run() {
+                        triggerCall(_params);
+                    }
+                }, _retryDelay, _retryDelayUnit);
+            } else {
+                // retry immediately
+                triggerCall(_params);
+            }
             return;
         }
 
