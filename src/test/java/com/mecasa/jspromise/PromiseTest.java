@@ -96,11 +96,11 @@ public class PromiseTest {
                 resolve("World");
             }
         }).resolve(resultCallback)
-          .reject(new Result<Throwable>() {
-            public void accept(Throwable throwable) {
-                fail();
-            }
-        }).waitForCompletion();
+                .reject(new Result<Throwable>() {
+                    public void accept(Throwable throwable) {
+                        fail();
+                    }
+                }).waitForCompletion();
 
 
         long ct2 = System.currentTimeMillis();
@@ -188,7 +188,6 @@ public class PromiseTest {
     }
 
 
-
     @Test
     public void testResolve() throws Exception {
         Promise.when(new AsyncCall<String>() {
@@ -225,8 +224,8 @@ public class PromiseTest {
 
         Object[] values = argumentCaptor.getValue();
         assertEquals(2, values.length);
-        assertTrue(((String)values[0]).length()>0);
-        assertTrue(((String)values[1]).length()>0);
+        assertTrue(((String) values[0]).length() > 0);
+        assertTrue(((String) values[1]).length() > 0);
     }
 
     @Test
@@ -244,7 +243,6 @@ public class PromiseTest {
                 reject(new IllegalAccessError());
             }
         });
-
 
         Result<Object[]> resultCallback = mockResultCallback();
         Result<Throwable> rejectCallback = mockRejectCallback();
@@ -264,6 +262,48 @@ public class PromiseTest {
         }
     }
 
+    @Test
+    public void testRetryWithoutDelay() throws Exception {
+        BlockingCall<String> call = new BlockingCall<String>() {
+            @Override
+            protected void call(Object... params) throws Throwable {
+                reject(new NullPointerException());
+            }
+        };
+
+        long ct1 = System.currentTimeMillis();
+        Promise.when(call.retries(1)).waitForCompletion();
+        long ct2 = System.currentTimeMillis();
+        assertTrue(ct2 - ct1 < 10);
+    }
+
+    @Test
+    public void testRetryDelay() throws Exception {
+        BlockingCall<String> call = new BlockingCall<String>() {
+            @Override
+            protected void call(Object... params) throws Throwable {
+                reject(new NullPointerException());
+            }
+        };
+
+
+        // make sure the Promise chain returns immediately, even if there is a retry with a delay.
+        // the reject callback however, is triggered after the delay
+        final long ct1 = System.currentTimeMillis();
+        Promise promise = Promise.when(call.retriesWithDelay(1, 500, TimeUnit.MILLISECONDS)).reject(new Result<Throwable>() {
+            @Override
+            public void accept(Throwable throwable) {
+                long ct3 = System.currentTimeMillis();
+                assertTrue(ct3 - ct1 > 500);
+            }
+        });
+
+        long ct2 = System.currentTimeMillis();
+        assertTrue(ct2 - ct1 < 10);
+
+        promise.waitForCompletion();
+
+    }
 
     @Test
     public void testRetryWithMultipleCalls() throws Exception {
@@ -348,10 +388,9 @@ public class PromiseTest {
                 .then(blockingCall)
                 .waitForCompletion();
         long ct2 = System.currentTimeMillis();
-        assertTrue(ct2-ct1>200);
-        assertTrue(ct2-ct1<250);
+        assertTrue(ct2 - ct1 > 200);
+        assertTrue(ct2 - ct1 < 250);
     }
-
 
 
     @Test
@@ -375,9 +414,9 @@ public class PromiseTest {
         });
 
         Promise.when(blockingCall)
-               .reject(errorHandler)
-               .resolve(resultHandler)
-               .waitForCompletion();
+                .reject(errorHandler)
+                .resolve(resultHandler)
+                .waitForCompletion();
 
         verify(errorHandler).accept(any(IllegalArgumentException.class));
         verify(resultHandler, never()).accept(any(Object[].class));
@@ -396,7 +435,7 @@ public class PromiseTest {
                 resolve(null);
             }
         }).resolve(resolveCallback)
-          .reject(rejectCallback);
+                .reject(rejectCallback);
 
         ArgumentCaptor<Object[]> captor = ArgumentCaptor.forClass(Object[].class);
         verify(resolveCallback).accept(captor.capture());
@@ -405,7 +444,6 @@ public class PromiseTest {
         assertEquals(null, objects[0]);
 
     }
-
 
 
     @Test
@@ -440,14 +478,14 @@ public class PromiseTest {
                 resolve(10);
             }
         })
-          .then(asyncCall1)
-          .then(asyncCall2)
-          .resolve(resultHandler)
-          .reject(new Result<Throwable>() {
-              public void accept(Throwable throwable) {
-                  throwable.printStackTrace();
-              }
-          });
+                .then(asyncCall1)
+                .then(asyncCall2)
+                .resolve(resultHandler)
+                .reject(new Result<Throwable>() {
+                    public void accept(Throwable throwable) {
+                        throwable.printStackTrace();
+                    }
+                });
 
         ArgumentCaptor<Object> argumentCaptor1 = ArgumentCaptor.forClass(Object.class);
         ArgumentCaptor<Object> argumentCaptor2 = ArgumentCaptor.forClass(Object.class);
@@ -497,7 +535,7 @@ public class PromiseTest {
 
         long ct2 = System.currentTimeMillis();
         // make sure the promise code was executed in less than 100ms => so the sleep was executed in another thread.
-        assertTrue(ct2-ct1<100);
+        assertTrue(ct2 - ct1 < 100);
 
         promise.waitForCompletion();
         verify(resultCallback).accept(any(Object[].class));
@@ -560,12 +598,12 @@ public class PromiseTest {
 
     @SuppressWarnings("unchecked")
     private Result<Object[]> mockResultCallback() {
-        return (Result<Object[]>)mock(Result.class);
+        return (Result<Object[]>) mock(Result.class);
     }
 
     @SuppressWarnings("unchecked")
     private Result<Throwable> mockRejectCallback() {
-        return (Result<Throwable>)mock(Result.class);
+        return (Result<Throwable>) mock(Result.class);
     }
 
     @Test
