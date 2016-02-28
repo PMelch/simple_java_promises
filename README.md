@@ -47,6 +47,59 @@ What SJPromise is NOT:
 
 A call can either be an AsyncCall which is assumed to perform it's call method in an async way already, or a BlockingCall which will be passed to the set Executor to be performed asynchronously. 
 
+
+### Tasks
+
+If you have a task that is already asynchronous - that is, running a background thread, or triggering an operation and get notified via callbacks - create a AsyncCall subclass like this:
+
+```Java
+    Call call = new AsyncCall<String>() {
+            @Override
+            public void call(Object... params) throws Exception {
+                triggerAsyncOperationWithCallback(new Callback() {
+                        void onSuccess() {
+                            resolve("foo");
+                        }
+                        
+                        void onError(String errorMessage) {
+                            // wrap error message in an Exception
+                            reject(new Exception(errorMessage));
+                        }
+                    }
+                );
+            }
+        }
+
+```
+
+
+If you have a blocking task you can either create a subclass of BlockingCall like this:
+
+```Java
+
+        Call call = new BlockingCall<String>() {
+            public void call(Object... params) throws Exception {
+                try {
+                    String resulg = performBlockingOperation();
+                } catch (Exception e) {
+                    reject(e);
+                }
+                resolve(result);
+            }
+        }
+
+```
+
+or if you just have a Runnable you want to perform asynchronously, you can use the BlockingCall.wrap(Runnable) method:
+```Java
+
+        Call call = new BlockingCall.wrap(runnable);
+
+```
+
+However, a wrapped Runnable can just resolve without a parameter and never get rejected. 
+
+
 ### Processing Return values / parameters
 
 Each stage in the promise chain gets passed the returned values of the previous stage.

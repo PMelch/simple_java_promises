@@ -168,7 +168,7 @@ public class PromiseTest {
         Result<Throwable> errorHandler = mockRejectCallback();
         Promise.when(new AsyncCall<String>() {
             public void call(Object... params) throws Exception {
-                reject(new IllegalArgumentException("Error"));
+                reject(new Exception("Error"));
             }
         })
                 .then(new AsyncCall<String>() {
@@ -561,7 +561,7 @@ public class PromiseTest {
         Promise.when(new BlockingCall<Integer>() {
             @Override
             protected void call(Object... params) throws Throwable {
-                reject(new IllegalArgumentException());
+                reject(new Exception());
             }
         }).fulfilled(fulfilledRunnable).waitForCompletion();
 
