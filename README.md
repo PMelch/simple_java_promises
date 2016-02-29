@@ -18,10 +18,11 @@ Each Call can resolve its status by calling resolve(value) or reject it by calli
 What SJPromise is:
 * a simple way to use Javascript Promise-like syntax to chain async tasks
 * working with Java 1.5 and above
+* inspired by the [Promises/A+ standard](https://promisesaplus.com/) 
 
 What SJPromise is NOT:
 * A full blown replacement for the CompletableFuture from Java 8 or the [JDeferred Lib](http://jdeferred.org/)
-* complying to the [Promises/A+ standard](https://promisesaplus.com/) 
+
 
 
 ## Usage
