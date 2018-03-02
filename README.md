@@ -113,7 +113,7 @@ Each stage in the promise chain gets passed the returned values of the previous 
             }})
         .then(new BlockingCall<Integer>(){
             public Integer call(Object... params) throws Exception {
-                // do operatino on passed String
+                // do operation on passed String
                 return countSomething((String)params[0]);
             }})
         .resolve(new Result<Object[]>() {
